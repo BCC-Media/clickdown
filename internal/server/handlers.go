@@ -201,7 +201,6 @@ func (s *Server) listTags(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) triggerSync(w http.ResponseWriter, r *http.Request) {
 	s.Sync.Trigger()
-	w.WriteHeader(http.StatusAccepted)
 	writeJSON(w, http.StatusAccepted, s.Sync.Status())
 }
 
