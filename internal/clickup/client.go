@@ -131,6 +131,21 @@ type UpdateTaskRequest struct {
 	Status      *string
 }
 
+// ListStatuses fetches the status schema for the given list from ClickUp.
+// Returns every status defined on the list, including terminal ones that no
+// task may currently be assigned to.
+func (c *Client) ListStatuses(ctx context.Context, listID string) ([]Status, error) {
+	resp, err := c.do(ctx, http.MethodGet, "/list/"+listID, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	out, err := decode[listResponse](resp)
+	if err != nil {
+		return nil, err
+	}
+	return out.Statuses, nil
+}
+
 func (c *Client) UpdateTask(ctx context.Context, taskID string, u UpdateTaskRequest) (Task, error) {
 	body := taskUpdateBody{Name: u.Title, Description: u.Description, Status: u.Status}
 	resp, err := c.do(ctx, http.MethodPut, "/task/"+taskID, nil, body)

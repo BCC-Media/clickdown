@@ -38,6 +38,10 @@ type Priority struct {
 	Orderindex json.Number `json:"orderindex"`
 }
 
+type ListRef struct {
+	ID string `json:"id"`
+}
+
 type Task struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
@@ -48,11 +52,17 @@ type Task struct {
 	Tags        []Tag     `json:"tags"`
 	DateUpdated string    `json:"date_updated"`
 	TeamID      string    `json:"team_id"`
+	List        ListRef   `json:"list"`
 }
 
 type filteredTasksResponse struct {
 	Tasks    []Task `json:"tasks"`
 	LastPage bool   `json:"last_page"`
+}
+
+type listResponse struct {
+	ID       string   `json:"id"`
+	Statuses []Status `json:"statuses"`
 }
 
 type taskUpdateBody struct {

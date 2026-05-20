@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"sync"
 	"time"
@@ -206,6 +207,27 @@ func (w *Worker) ensureTeamIDs(ctx context.Context) ([]string, error) {
 }
 
 func (w *Worker) reconcile(ctx context.Context, remote []clickup.Task) error {
+	// Fetch each unique list's full status schema before opening the tx so
+	// HTTP latency doesn't hold a SQLite write lock. The list endpoint is the
+	// authoritative source for statuses — task-embedded statuses only surface
+	// states that some currently-open task is assigned to, so terminal states
+	// like "Closed" would otherwise never reach the local DB.
+	listStatuses := make(map[string][]clickup.Status)
+	for _, t := range remote {
+		if t.List.ID == "" {
+			continue
+		}
+		if _, ok := listStatuses[t.List.ID]; ok {
+			continue
+		}
+		sts, err := w.Client.ListStatuses(ctx, t.List.ID)
+		if err != nil {
+			log.Printf("clickdown: fetch list %s statuses: %v", t.List.ID, err)
+			continue
+		}
+		listStatuses[t.List.ID] = sts
+	}
+
 	tx, err := w.Store.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -214,20 +236,31 @@ func (w *Worker) reconcile(ctx context.Context, remote []clickup.Task) error {
 	q := w.Store.Q.WithTx(tx)
 	now := time.Now().UnixMilli()
 
-	// Upsert statuses from each task's embedded status object.
+	// Upsert statuses. List-schema statuses first (authoritative), then
+	// task-embedded ones as a fallback for any task without a list_id.
 	seen := map[string]bool{}
-	for _, t := range remote {
-		if t.Status.Status == "" || seen[t.Status.Status] {
-			continue
+	upsertStatus := func(s clickup.Status) error {
+		if s.Status == "" || seen[s.Status] {
+			return nil
 		}
-		seen[t.Status.Status] = true
-		order, _ := t.Status.Orderindex.Int64()
-		if err := q.UpsertStatus(ctx, gen.UpsertStatusParams{
-			Name:       t.Status.Status,
-			Color:      t.Status.Color,
-			Type:       t.Status.Type,
+		seen[s.Status] = true
+		order, _ := s.Orderindex.Int64()
+		return q.UpsertStatus(ctx, gen.UpsertStatusParams{
+			Name:       s.Status,
+			Color:      s.Color,
+			Type:       s.Type,
 			Orderindex: order,
-		}); err != nil {
+		})
+	}
+	for _, sts := range listStatuses {
+		for _, s := range sts {
+			if err := upsertStatus(s); err != nil {
+				return err
+			}
+		}
+	}
+	for _, t := range remote {
+		if err := upsertStatus(t.Status); err != nil {
 			return err
 		}
 	}
