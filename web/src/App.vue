@@ -317,7 +317,7 @@ function syncDotClass(): string {
     <header class="top">
       <div class="brand">
         <span class="brand-mark">⌗</span>
-        <span class="brand-name">tasks</span>
+        <span class="brand-name">clickdown</span>
         <span class="brand-count">{{ visible.length }}<span class="dim">/{{ tasks.length }}</span></span>
       </div>
 
