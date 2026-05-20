@@ -34,6 +34,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tasks", s.listTasks)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.patchTask)
 	mux.HandleFunc("PUT /api/tasks/{id}/tags", s.putTaskTags)
+	mux.HandleFunc("GET /api/tasks/{id}/comments", s.listTaskComments)
+	mux.HandleFunc("POST /api/tasks/{id}/comments", s.postTaskComment)
 	mux.HandleFunc("GET /api/statuses", s.listStatuses)
 	mux.HandleFunc("GET /api/tags", s.listTags)
 	mux.HandleFunc("POST /api/sync", s.triggerSync)

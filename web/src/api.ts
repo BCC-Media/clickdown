@@ -28,6 +28,16 @@ export interface Settings {
   [key: string]: string;
 }
 
+export interface Comment {
+  id: number;
+  clickup_id: string | null;
+  task_id: number;
+  author: string;
+  text: string;
+  created_at: number;
+  pending: boolean;
+}
+
 async function req<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const r = await fetch(input, init);
   if (!r.ok) {
@@ -68,5 +78,12 @@ export const api = {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+    }),
+  listTaskComments: (id: number) => req<Comment[]>(`/api/tasks/${id}/comments`),
+  postTaskComment: (id: number, text: string) =>
+    req<Comment>(`/api/tasks/${id}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
     }),
 };

@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	settingUserID  = "clickup_user_id"
-	settingTeamIDs = "clickup_team_ids"
-	settingLastAt  = "last_sync_at"
+	settingUserID   = "clickup_user_id"
+	settingUsername = "clickup_username"
+	settingTeamIDs  = "clickup_team_ids"
+	settingLastAt   = "last_sync_at"
 )
 
 type Status struct {
@@ -159,6 +160,9 @@ func (w *Worker) sync(ctx context.Context) error {
 	if err := w.pushDirty(ctx); err != nil {
 		return fmt.Errorf("push: %w", err)
 	}
+	if err := w.pushDirtyComments(ctx); err != nil {
+		return fmt.Errorf("push comments: %w", err)
+	}
 	return nil
 }
 
@@ -177,6 +181,11 @@ func (w *Worker) ensureUserID(ctx context.Context) (string, error) {
 	id := u.ID.String()
 	if err := w.Store.Q.SetSetting(ctx, gen.SetSettingParams{Key: settingUserID, Value: id}); err != nil {
 		return "", err
+	}
+	if u.Username != "" {
+		if err := w.Store.Q.SetSetting(ctx, gen.SetSettingParams{Key: settingUsername, Value: u.Username}); err != nil {
+			return "", err
+		}
 	}
 	return id, nil
 }
@@ -462,4 +471,104 @@ func descriptionText(t clickup.Task) string {
 		return t.TextContent
 	}
 	return t.Description
+}
+
+// PullCommentsForTask fetches the latest page of comments for the given local
+// task ID from ClickUp and reconciles them into the local DB. Locally-queued
+// comments (clickup_id IS NULL) are left untouched so they survive a refresh.
+func (w *Worker) PullCommentsForTask(ctx context.Context, taskID int64) error {
+	t, err := w.Store.Q.GetTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	remote, err := w.Client.TaskComments(ctx, t.ClickupID)
+	if err != nil {
+		return err
+	}
+
+	tx, err := w.Store.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	q := w.Store.Q.WithTx(tx)
+	now := time.Now().UnixMilli()
+
+	keep := make([]*string, 0, len(remote))
+	for _, rc := range remote {
+		if rc.ID == "" {
+			continue
+		}
+		cid := rc.ID
+		keep = append(keep, &cid)
+		date := parseDateMillis(rc.Date)
+		authorID := rc.User.ID.String()
+		existing, gerr := q.GetCommentByClickupID(ctx, &cid)
+		if errors.Is(gerr, sql.ErrNoRows) {
+			if _, err := q.InsertRemoteComment(ctx, gen.InsertRemoteCommentParams{
+				ClickupID:      &cid,
+				TaskID:         t.ID,
+				AuthorID:       authorID,
+				AuthorUsername: rc.User.Username,
+				Text:           rc.CommentText,
+				ClickupDate:    date,
+				LocalCreatedAt: now,
+			}); err != nil {
+				return err
+			}
+			continue
+		}
+		if gerr != nil {
+			return gerr
+		}
+		_ = existing
+		if err := q.UpdateRemoteComment(ctx, gen.UpdateRemoteCommentParams{
+			AuthorID:       authorID,
+			AuthorUsername: rc.User.Username,
+			Text:           rc.CommentText,
+			ClickupDate:    date,
+			ClickupID:      &cid,
+		}); err != nil {
+			return err
+		}
+	}
+
+	if err := q.SoftDeleteMissingCommentsForTask(ctx, gen.SoftDeleteMissingCommentsForTaskParams{
+		DeletedAt: &now,
+		TaskID:    t.ID,
+		Keep:      keep,
+	}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (w *Worker) pushDirtyComments(ctx context.Context) error {
+	dirty, err := w.Store.Q.ListCommentsDirty(ctx)
+	if err != nil {
+		return err
+	}
+	for _, d := range dirty {
+		t, err := w.Store.Q.GetTask(ctx, d.TaskID)
+		if err != nil {
+			continue
+		}
+		resp, err := w.Client.PostComment(ctx, t.ClickupID, d.Text)
+		if err != nil {
+			return fmt.Errorf("post comment task %s: %w", t.ClickupID, err)
+		}
+		cid := resp.ID.String()
+		date := parseDateMillis(resp.Date.String())
+		if err := w.Store.Q.SetCommentClickupID(ctx, gen.SetCommentClickupIDParams{
+			ClickupID:   &cid,
+			ClickupDate: date,
+			ID:          d.CommentID,
+		}); err != nil {
+			return err
+		}
+		if err := w.Store.Q.ClearCommentDirty(ctx, d.CommentID); err != nil {
+			return err
+		}
+	}
+	return nil
 }

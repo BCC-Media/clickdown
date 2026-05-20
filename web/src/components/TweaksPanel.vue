@@ -63,7 +63,9 @@ function lastSyncLabel(): string {
         </button>
         <div class="dim mono tw-sync-meta">
           last: {{ lastSyncLabel() }}
-          <span v-if="syncStatus.last_error" class="tw-err" :title="syncStatus.last_error">· error</span>
+        </div>
+        <div v-if="syncStatus.last_error" class="tw-err mono" :title="syncStatus.last_error">
+          {{ syncStatus.last_error }}
         </div>
       </div>
     </div>
@@ -88,7 +90,17 @@ function lastSyncLabel(): string {
 .tw-int input:focus { border-color: var(--accent); }
 .tw-sync { display: flex; flex-direction: column; gap: 4px; }
 .tw-sync-meta { font-size: 10.5px; }
-.tw-err { color: var(--filter-no); margin-left: 4px; }
+.tw-err {
+  color: var(--filter-no);
+  font-size: 10.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 6px 8px;
+  background: var(--filter-no-bg);
+  border-radius: 4px;
+  user-select: text;
+}
 .tweaks-fab {
   position: fixed; right: 16px; bottom: 40px;
   width: 32px; height: 32px;

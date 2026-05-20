@@ -71,6 +71,32 @@ type taskUpdateBody struct {
 	Status      *string `json:"status,omitempty"`
 }
 
+type Comment struct {
+	ID          string      `json:"id"`
+	CommentText string      `json:"comment_text"`
+	User        CommentUser `json:"user"`
+	Date        string      `json:"date"`
+}
+
+type CommentUser struct {
+	ID       json.Number `json:"id"`
+	Username string      `json:"username"`
+}
+
+type commentsResponse struct {
+	Comments []Comment `json:"comments"`
+}
+
+type postCommentBody struct {
+	CommentText string `json:"comment_text"`
+	NotifyAll   bool   `json:"notify_all"`
+}
+
+type PostCommentResponse struct {
+	ID   json.Number `json:"id"`
+	Date json.Number `json:"date"`
+}
+
 type APIError struct {
 	Status  int    `json:"-"`
 	Err     string `json:"err"`

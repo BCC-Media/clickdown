@@ -4,6 +4,23 @@
 
 package gen
 
+type Comment struct {
+	ID             int64   `json:"id"`
+	ClickupID      *string `json:"clickup_id"`
+	TaskID         int64   `json:"task_id"`
+	AuthorID       string  `json:"author_id"`
+	AuthorUsername string  `json:"author_username"`
+	Text           string  `json:"text"`
+	ClickupDate    *int64  `json:"clickup_date"`
+	LocalCreatedAt int64   `json:"local_created_at"`
+	DeletedAt      *int64  `json:"deleted_at"`
+}
+
+type CommentsDirty struct {
+	CommentID int64 `json:"comment_id"`
+	QueuedAt  int64 `json:"queued_at"`
+}
+
 type Setting struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`

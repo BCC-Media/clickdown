@@ -155,3 +155,28 @@ func (c *Client) UpdateTask(ctx context.Context, taskID string, u UpdateTaskRequ
 	return decode[Task](resp)
 }
 
+// TaskComments fetches the most recent page of comments for a task (ClickUp
+// returns up to 25 newest-first; pagination via the `start` cursor is not
+// implemented here).
+func (c *Client) TaskComments(ctx context.Context, taskID string) ([]Comment, error) {
+	resp, err := c.do(ctx, http.MethodGet, "/task/"+taskID+"/comment", nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	out, err := decode[commentsResponse](resp)
+	if err != nil {
+		return nil, err
+	}
+	return out.Comments, nil
+}
+
+// PostComment creates a top-level comment on the task. notify_all is forced
+// false to avoid surprising downstream notifications during triage.
+func (c *Client) PostComment(ctx context.Context, taskID, text string) (PostCommentResponse, error) {
+	resp, err := c.do(ctx, http.MethodPost, "/task/"+taskID+"/comment", nil, postCommentBody{CommentText: text})
+	if err != nil {
+		return PostCommentResponse{}, err
+	}
+	return decode[PostCommentResponse](resp)
+}
+

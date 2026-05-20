@@ -4,6 +4,7 @@ import StatusPill from "./StatusPill.vue";
 import TagList from "./TagList.vue";
 import EditableTitle from "./EditableTitle.vue";
 import PriorityBadge from "./PriorityBadge.vue";
+import CommentsSection from "./CommentsSection.vue";
 import type { Task, Status } from "../api";
 
 const props = defineProps<{
@@ -132,6 +133,7 @@ function onDescKey(e: KeyboardEvent) {
         <span><kbd>o</kbd> open in ClickUp</span>
         <span><kbd>esc</kbd> close</span>
       </div>
+      <CommentsSection :task-id="task.id" />
     </div>
   </div>
 </template>

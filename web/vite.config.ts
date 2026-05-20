@@ -3,6 +3,8 @@ import vue from "@vitejs/plugin-vue";
 
 export default defineConfig({
   plugins: [vue()],
+  // Don't wipe the terminal — would hide output from the parallel `go run` in `make dev`.
+  clearScreen: false,
   build: {
     outDir: "dist",
     emptyOutDir: true,

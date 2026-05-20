@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bcc-media/clickdown/internal/db/gen"
@@ -267,6 +269,105 @@ func (s *Server) patchSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.getSettings(w, r)
+}
+
+type commentDTO struct {
+	ID        int64   `json:"id"`
+	ClickupID *string `json:"clickup_id"`
+	TaskID    int64   `json:"task_id"`
+	Author    string  `json:"author"`
+	Text      string  `json:"text"`
+	CreatedAt int64   `json:"created_at"`
+	Pending   bool    `json:"pending"`
+}
+
+func commentToDTO(c gen.Comment) commentDTO {
+	created := c.LocalCreatedAt
+	if c.ClickupDate != nil {
+		created = *c.ClickupDate
+	}
+	return commentDTO{
+		ID:        c.ID,
+		ClickupID: c.ClickupID,
+		TaskID:    c.TaskID,
+		Author:    c.AuthorUsername,
+		Text:      c.Text,
+		CreatedAt: created,
+		Pending:   c.ClickupID == nil,
+	}
+}
+
+func (s *Server) listTaskComments(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.Sync.PullCommentsForTask(ctx, id); err != nil {
+		// Best-effort: log and continue with whatever's already in the local DB.
+		log.Printf("clickdown: pull comments task %d: %v", id, err)
+	}
+	rows, err := s.Store.Q.ListCommentsForTask(ctx, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	out := make([]commentDTO, 0, len(rows))
+	for _, c := range rows {
+		out = append(out, commentToDTO(c))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type postCommentBody struct {
+	Text string `json:"text"`
+}
+
+func (s *Server) postTaskComment(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var body postCommentBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	text := strings.TrimSpace(body.Text)
+	if text == "" {
+		writeError(w, http.StatusBadRequest, errors.New("text is required"))
+		return
+	}
+	if _, err := s.Store.Q.GetTask(ctx, id); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	authorID, _ := s.Store.Q.GetSetting(ctx, "clickup_user_id")
+	authorName, _ := s.Store.Q.GetSetting(ctx, "clickup_username")
+	now := time.Now().UnixMilli()
+	c, err := s.Store.Q.InsertLocalComment(ctx, gen.InsertLocalCommentParams{
+		TaskID:         id,
+		AuthorID:       authorID,
+		AuthorUsername: authorName,
+		Text:           text,
+		LocalCreatedAt: now,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if err := s.Store.Q.UpsertCommentDirty(ctx, gen.UpsertCommentDirtyParams{
+		CommentID: c.ID,
+		QueuedAt:  now,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.Sync.Trigger()
+	writeJSON(w, http.StatusCreated, commentToDTO(c))
 }
 
 func (s *Server) serveOneTask(ctx context.Context, w http.ResponseWriter, id int64) {
