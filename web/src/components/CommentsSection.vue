@@ -11,14 +11,24 @@ const draft = ref("");
 const posting = ref(false);
 
 async function load() {
+  const id = props.taskId;
   loading.value = true;
   error.value = null;
+  // Stale-while-revalidate: render local DB rows first, then pull from
+  // ClickUp and re-render with whatever the refresh brings back.
   try {
-    comments.value = await api.listTaskComments(props.taskId);
+    const cached = await api.listTaskComments(id);
+    if (id === props.taskId) comments.value = cached;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
     loading.value = false;
+  }
+  try {
+    const fresh = await api.listTaskComments(id, { refresh: true });
+    if (id === props.taskId) comments.value = fresh;
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
   }
 }
 

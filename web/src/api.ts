@@ -79,7 +79,8 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
-  listTaskComments: (id: number) => req<Comment[]>(`/api/tasks/${id}/comments`),
+  listTaskComments: (id: number, opts?: { refresh?: boolean }) =>
+    req<Comment[]>(`/api/tasks/${id}/comments${opts?.refresh ? "?refresh=1" : ""}`),
   postTaskComment: (id: number, text: string) =>
     req<Comment>(`/api/tasks/${id}/comments`, {
       method: "POST",

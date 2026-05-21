@@ -304,9 +304,11 @@ func (s *Server) listTaskComments(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if err := s.Sync.PullCommentsForTask(ctx, id); err != nil {
-		// Best-effort: log and continue with whatever's already in the local DB.
-		log.Printf("clickdown: pull comments task %d: %v", id, err)
+	if r.URL.Query().Get("refresh") == "1" {
+		if err := s.Sync.PullCommentsForTask(ctx, id); err != nil {
+			// Best-effort: log and continue with whatever's already in the local DB.
+			log.Printf("clickdown: pull comments task %d: %v", id, err)
+		}
 	}
 	rows, err := s.Store.Q.ListCommentsForTask(ctx, id)
 	if err != nil {
