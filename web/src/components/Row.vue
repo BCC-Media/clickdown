@@ -113,7 +113,7 @@ function onDescKey(e: KeyboardEvent) {
         @tag-click="$emit('tag-click', $event)"
         @tag-exclude="$emit('tag-exclude', $event)"
       />
-      <span v-if="!expanded && task.desc" class="row-desc-preview">{{ task.desc }}</span>
+      <span class="row-desc-preview">{{ !expanded && task.desc ? task.desc : '' }}</span>
       <button class="row-open" @click.stop="$emit('open')" title="Open in ClickUp (o)">open <span class="row-open-arr">↗</span></button>
     </div>
     <div v-if="expanded" class="row-expand" @click.stop>
