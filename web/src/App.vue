@@ -96,19 +96,6 @@ const visible = computed(() => {
   return v;
 });
 
-const titleWidth = computed(() => {
-  if (typeof document === "undefined" || !visible.value.length) return 0;
-  const ctx = document.createElement("canvas").getContext("2d");
-  if (!ctx) return 0;
-  ctx.font = '500 13px Geist, ui-sans-serif, -apple-system, sans-serif';
-  let max = 0;
-  for (const t of visible.value) {
-    const w = ctx.measureText(t.title || "").width;
-    if (w > max) max = w;
-  }
-  return Math.max(120, Math.min(Math.ceil(max) + 6, 640));
-});
-
 function cycle(map: Record<string, "include" | "exclude" | undefined>, key: string) {
   const cur = map[key];
   const next = cur === undefined ? "include" : cur === "include" ? "exclude" : undefined;
@@ -312,7 +299,7 @@ function syncDotClass(): string {
 <template>
   <div
     :class="['app', tweaks.theme]"
-    :style="{ '--accent': tweaks.accent, '--title-w': titleWidth + 'px' }"
+    :style="{ '--accent': tweaks.accent }"
   >
     <header class="top">
       <div class="brand">
