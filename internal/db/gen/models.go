@@ -15,6 +15,7 @@ type Comment struct {
 	LocalCreatedAt  int64   `json:"local_created_at"`
 	DeletedAt       *int64  `json:"deleted_at"`
 	ParentClickupID *string `json:"parent_clickup_id"`
+	BlocksJson      *string `json:"blocks_json"`
 }
 
 type CommentsDirty struct {

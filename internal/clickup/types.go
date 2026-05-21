@@ -72,11 +72,36 @@ type taskUpdateBody struct {
 }
 
 type Comment struct {
-	ID          string      `json:"id"`
-	CommentText string      `json:"comment_text"`
-	User        CommentUser `json:"user"`
-	Date        string      `json:"date"`
-	ReplyCount  json.Number `json:"reply_count"`
+	ID          string          `json:"id"`
+	CommentText string          `json:"comment_text"`
+	Comment     []CommentBlock  `json:"comment"`
+	User        CommentUser     `json:"user"`
+	Date        string          `json:"date"`
+	ReplyCount  json.Number     `json:"reply_count"`
+}
+
+// CommentBlock is one segment of a ClickUp comment body. ClickUp returns a
+// heterogeneous array — plain text spans have Type="" (or absent), mentions
+// have Type="tag", inline images have Type="image" with an Image payload.
+// Unknown types are still preserved when we round-trip the raw JSON.
+type CommentBlock struct {
+	Type  string          `json:"type,omitempty"`
+	Text  string          `json:"text,omitempty"`
+	Image *CommentImage   `json:"image,omitempty"`
+	User  *CommentUser    `json:"user,omitempty"`
+}
+
+type CommentImage struct {
+	ID              string `json:"id,omitempty"`
+	Name            string `json:"name,omitempty"`
+	Title           string `json:"title,omitempty"`
+	Extension       string `json:"extension,omitempty"`
+	URL             string `json:"url,omitempty"`
+	ThumbnailSmall  string `json:"thumbnail_small,omitempty"`
+	ThumbnailMedium string `json:"thumbnail_medium,omitempty"`
+	ThumbnailLarge  string `json:"thumbnail_large,omitempty"`
+	Width           int    `json:"width,omitempty"`
+	Height          int    `json:"height,omitempty"`
 }
 
 type CommentUser struct {

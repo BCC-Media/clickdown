@@ -7,13 +7,13 @@ ORDER BY COALESCE(clickup_date, local_created_at) ASC, id ASC;
 SELECT * FROM comments WHERE clickup_id = ?;
 
 -- name: InsertRemoteComment :one
-INSERT INTO comments (clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at, parent_clickup_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO comments (clickup_id, task_id, author_id, author_username, text, blocks_json, clickup_date, local_created_at, parent_clickup_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpdateRemoteComment :exec
 UPDATE comments
-SET author_id = ?, author_username = ?, text = ?, clickup_date = ?, deleted_at = NULL
+SET author_id = ?, author_username = ?, text = ?, blocks_json = ?, clickup_date = ?, deleted_at = NULL
 WHERE clickup_id = ?;
 
 -- name: InsertLocalComment :one

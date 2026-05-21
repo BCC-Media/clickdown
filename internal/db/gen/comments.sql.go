@@ -20,7 +20,7 @@ func (q *Queries) ClearCommentDirty(ctx context.Context, commentID int64) error 
 }
 
 const getCommentByClickupID = `-- name: GetCommentByClickupID :one
-SELECT id, clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at, deleted_at, parent_clickup_id FROM comments WHERE clickup_id = ?
+SELECT id, clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at, deleted_at, parent_clickup_id, blocks_json FROM comments WHERE clickup_id = ?
 `
 
 func (q *Queries) GetCommentByClickupID(ctx context.Context, clickupID *string) (Comment, error) {
@@ -37,6 +37,7 @@ func (q *Queries) GetCommentByClickupID(ctx context.Context, clickupID *string) 
 		&i.LocalCreatedAt,
 		&i.DeletedAt,
 		&i.ParentClickupID,
+		&i.BlocksJson,
 	)
 	return i, err
 }
@@ -44,7 +45,7 @@ func (q *Queries) GetCommentByClickupID(ctx context.Context, clickupID *string) 
 const insertLocalComment = `-- name: InsertLocalComment :one
 INSERT INTO comments (clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at, parent_clickup_id)
 VALUES (NULL, ?, ?, ?, ?, NULL, ?, ?)
-RETURNING id, clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at, deleted_at, parent_clickup_id
+RETURNING id, clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at, deleted_at, parent_clickup_id, blocks_json
 `
 
 type InsertLocalCommentParams struct {
@@ -77,14 +78,15 @@ func (q *Queries) InsertLocalComment(ctx context.Context, arg InsertLocalComment
 		&i.LocalCreatedAt,
 		&i.DeletedAt,
 		&i.ParentClickupID,
+		&i.BlocksJson,
 	)
 	return i, err
 }
 
 const insertRemoteComment = `-- name: InsertRemoteComment :one
-INSERT INTO comments (clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at, parent_clickup_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at, deleted_at, parent_clickup_id
+INSERT INTO comments (clickup_id, task_id, author_id, author_username, text, blocks_json, clickup_date, local_created_at, parent_clickup_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at, deleted_at, parent_clickup_id, blocks_json
 `
 
 type InsertRemoteCommentParams struct {
@@ -93,6 +95,7 @@ type InsertRemoteCommentParams struct {
 	AuthorID        string  `json:"author_id"`
 	AuthorUsername  string  `json:"author_username"`
 	Text            string  `json:"text"`
+	BlocksJson      *string `json:"blocks_json"`
 	ClickupDate     *int64  `json:"clickup_date"`
 	LocalCreatedAt  int64   `json:"local_created_at"`
 	ParentClickupID *string `json:"parent_clickup_id"`
@@ -105,6 +108,7 @@ func (q *Queries) InsertRemoteComment(ctx context.Context, arg InsertRemoteComme
 		arg.AuthorID,
 		arg.AuthorUsername,
 		arg.Text,
+		arg.BlocksJson,
 		arg.ClickupDate,
 		arg.LocalCreatedAt,
 		arg.ParentClickupID,
@@ -121,6 +125,7 @@ func (q *Queries) InsertRemoteComment(ctx context.Context, arg InsertRemoteComme
 		&i.LocalCreatedAt,
 		&i.DeletedAt,
 		&i.ParentClickupID,
+		&i.BlocksJson,
 	)
 	return i, err
 }
@@ -170,7 +175,7 @@ func (q *Queries) ListCommentsDirty(ctx context.Context) ([]ListCommentsDirtyRow
 }
 
 const listCommentsForTask = `-- name: ListCommentsForTask :many
-SELECT id, clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at, deleted_at, parent_clickup_id FROM comments
+SELECT id, clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at, deleted_at, parent_clickup_id, blocks_json FROM comments
 WHERE task_id = ? AND deleted_at IS NULL
 ORDER BY COALESCE(clickup_date, local_created_at) ASC, id ASC
 `
@@ -195,6 +200,7 @@ func (q *Queries) ListCommentsForTask(ctx context.Context, taskID int64) ([]Comm
 			&i.LocalCreatedAt,
 			&i.DeletedAt,
 			&i.ParentClickupID,
+			&i.BlocksJson,
 		); err != nil {
 			return nil, err
 		}
@@ -258,7 +264,7 @@ func (q *Queries) SoftDeleteMissingCommentsForTask(ctx context.Context, arg Soft
 
 const updateRemoteComment = `-- name: UpdateRemoteComment :exec
 UPDATE comments
-SET author_id = ?, author_username = ?, text = ?, clickup_date = ?, deleted_at = NULL
+SET author_id = ?, author_username = ?, text = ?, blocks_json = ?, clickup_date = ?, deleted_at = NULL
 WHERE clickup_id = ?
 `
 
@@ -266,6 +272,7 @@ type UpdateRemoteCommentParams struct {
 	AuthorID       string  `json:"author_id"`
 	AuthorUsername string  `json:"author_username"`
 	Text           string  `json:"text"`
+	BlocksJson     *string `json:"blocks_json"`
 	ClickupDate    *int64  `json:"clickup_date"`
 	ClickupID      *string `json:"clickup_id"`
 }
@@ -275,6 +282,7 @@ func (q *Queries) UpdateRemoteComment(ctx context.Context, arg UpdateRemoteComme
 		arg.AuthorID,
 		arg.AuthorUsername,
 		arg.Text,
+		arg.BlocksJson,
 		arg.ClickupDate,
 		arg.ClickupID,
 	)

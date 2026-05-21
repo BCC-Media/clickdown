@@ -33,6 +33,25 @@ export interface Settings {
   [key: string]: string;
 }
 
+export interface CommentImage {
+  id?: string;
+  name?: string;
+  title?: string;
+  url?: string;
+  thumbnail_small?: string;
+  thumbnail_medium?: string;
+  thumbnail_large?: string;
+  width?: number;
+  height?: number;
+}
+
+export interface CommentBlock {
+  type?: "tag" | "image" | string;
+  text?: string;
+  image?: CommentImage;
+  user?: { id?: number | string; username?: string };
+}
+
 export interface Comment {
   id: number;
   clickup_id: string | null;
@@ -40,6 +59,7 @@ export interface Comment {
   parent_clickup_id: string | null;
   author: string;
   text: string;
+  blocks?: CommentBlock[];
   created_at: number;
   pending: boolean;
 }

@@ -277,20 +277,27 @@ func (s *Server) patchSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 type commentDTO struct {
-	ID              int64   `json:"id"`
-	ClickupID       *string `json:"clickup_id"`
-	TaskID          int64   `json:"task_id"`
-	ParentClickupID *string `json:"parent_clickup_id"`
-	Author          string  `json:"author"`
-	Text            string  `json:"text"`
-	CreatedAt       int64   `json:"created_at"`
-	Pending         bool    `json:"pending"`
+	ID              int64             `json:"id"`
+	ClickupID       *string           `json:"clickup_id"`
+	TaskID          int64             `json:"task_id"`
+	ParentClickupID *string           `json:"parent_clickup_id"`
+	Author          string            `json:"author"`
+	Text            string            `json:"text"`
+	Blocks          []json.RawMessage `json:"blocks,omitempty"`
+	CreatedAt       int64             `json:"created_at"`
+	Pending         bool              `json:"pending"`
 }
 
 func commentToDTO(c gen.Comment) commentDTO {
 	created := c.LocalCreatedAt
 	if c.ClickupDate != nil {
 		created = *c.ClickupDate
+	}
+	var blocks []json.RawMessage
+	if c.BlocksJson != nil && *c.BlocksJson != "" {
+		// Pass the stored array through untouched. If it's malformed for any
+		// reason, drop the field rather than failing the response.
+		_ = json.Unmarshal([]byte(*c.BlocksJson), &blocks)
 	}
 	return commentDTO{
 		ID:              c.ID,
@@ -299,6 +306,7 @@ func commentToDTO(c gen.Comment) commentDTO {
 		ParentClickupID: c.ParentClickupID,
 		Author:          c.AuthorUsername,
 		Text:            c.Text,
+		Blocks:          blocks,
 		CreatedAt:       created,
 		Pending:         c.ClickupID == nil,
 	}

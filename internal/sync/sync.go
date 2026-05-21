@@ -437,6 +437,20 @@ func (w *Worker) pushDirty(ctx context.Context) error {
 	return nil
 }
 
+// encodeBlocks serializes the comment block array for storage. Returns nil
+// when the source is empty so the column stays NULL rather than holding "[]".
+func encodeBlocks(blocks []clickup.CommentBlock) *string {
+	if len(blocks) == 0 {
+		return nil
+	}
+	raw, err := json.Marshal(blocks)
+	if err != nil {
+		return nil
+	}
+	s := string(raw)
+	return &s
+}
+
 func parseDateMillis(s string) *int64 {
 	if s == "" {
 		return nil
@@ -520,6 +534,7 @@ func (w *Worker) PullCommentsForTask(ctx context.Context, taskID int64) error {
 		keep = append(keep, &cid)
 		date := parseDateMillis(rc.Date)
 		authorID := rc.User.ID.String()
+		blocks := encodeBlocks(rc.Comment)
 		_, gerr := q.GetCommentByClickupID(ctx, &cid)
 		if errors.Is(gerr, sql.ErrNoRows) {
 			_, err := q.InsertRemoteComment(ctx, gen.InsertRemoteCommentParams{
@@ -528,6 +543,7 @@ func (w *Worker) PullCommentsForTask(ctx context.Context, taskID int64) error {
 				AuthorID:        authorID,
 				AuthorUsername:  rc.User.Username,
 				Text:            rc.CommentText,
+				BlocksJson:      blocks,
 				ClickupDate:     date,
 				LocalCreatedAt:  now,
 				ParentClickupID: parent,
@@ -541,6 +557,7 @@ func (w *Worker) PullCommentsForTask(ctx context.Context, taskID int64) error {
 			AuthorID:       authorID,
 			AuthorUsername: rc.User.Username,
 			Text:           rc.CommentText,
+			BlocksJson:     blocks,
 			ClickupDate:    date,
 			ClickupID:      &cid,
 		})

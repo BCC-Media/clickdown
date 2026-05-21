@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
 import { api, type Comment } from "../api";
+import CommentBody from "./CommentBody.vue";
 
 const props = defineProps<{ taskId: number }>();
 
@@ -140,7 +141,7 @@ function fmtTime(ms: number): string {
             <span class="comment-time">{{ fmtTime(t.parent.created_at) }}</span>
             <span v-if="t.parent.pending" class="comment-pending">syncing…</span>
           </div>
-          <div class="comment-text">{{ t.parent.text }}</div>
+          <CommentBody class="comment-text" :blocks="t.parent.blocks" :text="t.parent.text" />
           <button
             v-if="t.parent.clickup_id"
             class="comment-reply-btn"
@@ -154,7 +155,7 @@ function fmtTime(ms: number): string {
               <span class="comment-time">{{ fmtTime(r.created_at) }}</span>
               <span v-if="r.pending" class="comment-pending">syncing…</span>
             </div>
-            <div class="comment-text">{{ r.text }}</div>
+            <CommentBody class="comment-text" :blocks="r.blocks" :text="r.text" />
           </div>
           <div v-if="t.parent.clickup_id && replyOpen[t.parent.clickup_id]" class="comment-compose reply-compose">
             <textarea
