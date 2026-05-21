@@ -1,3 +1,8 @@
+export interface TaskTag {
+  name: string;
+  origin: string;
+}
+
 export interface Task {
   id: number;
   clickup_id: string;
@@ -5,7 +10,7 @@ export interface Task {
   desc: string;
   status: string;
   priority: number | null;
-  tags: string[];
+  tags: TaskTag[];
   updated_at: number;
 }
 

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, watch, nextTick } from "vue";
+import type { TaskTag } from "../api";
 
 const props = defineProps<{
-  tags: string[];
+  tags: TaskTag[];
   tagFilter: Record<string, "include" | "exclude" | undefined>;
 }>();
 const emit = defineEmits<{
@@ -31,7 +32,7 @@ function tagHue(s: string): number {
 function commit() {
   const next = draft.value.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
   if (next.length) {
-    const merged = Array.from(new Set([...props.tags, ...next]));
+    const merged = Array.from(new Set([...props.tags.map((t) => t.name), ...next]));
     emit("change", merged);
   }
   draft.value = "";
@@ -43,26 +44,31 @@ function startEdit(e: MouseEvent) {
   editing.value = true;
 }
 
-function remove(tg: string) {
-  emit("change", props.tags.filter((x) => x !== tg));
+function remove(name: string) {
+  emit("change", props.tags.filter((x) => x.name !== name).map((x) => x.name));
 }
 
-function stateOf(tg: string) {
-  return props.tagFilter?.[tg];
+function stateOf(name: string) {
+  return props.tagFilter?.[name];
 }
 </script>
 
 <template>
   <span class="tags">
-    <button
-      v-for="tg in tags"
-      :key="tg"
-      :class="['tag', { 'tag-include': stateOf(tg) === 'include', 'tag-exclude': stateOf(tg) === 'exclude' }]"
-      :style="{ '--tag-h': tagHue(tg) }"
-      @click.stop="$emit('tag-click', tg)"
-      @contextmenu.prevent.stop="($event as MouseEvent).shiftKey ? remove(tg) : $emit('tag-exclude', tg)"
-      :title="'#' + tg + '  ·  click: filter cycle  ·  right-click: toggle exclude  ·  shift+right-click: remove'"
-    >{{ tg }}</button>
+    <span v-for="tg in tags" :key="tg.name" class="tag-group" :style="{ '--tag-h': tagHue(tg.name) }">
+      <button
+        :class="['tag', { 'tag-include': stateOf(tg.name) === 'include', 'tag-exclude': stateOf(tg.name) === 'exclude', 'tag-local': tg.origin === 'local' }]"
+        @click.stop="$emit('tag-click', tg.name)"
+        @contextmenu.prevent.stop="($event as MouseEvent).shiftKey ? remove(tg.name) : $emit('tag-exclude', tg.name)"
+        :title="'#' + tg.name + '  ·  click: filter cycle  ·  right-click: toggle exclude' + (tg.origin === 'local' ? '  ·  × to remove' : '')"
+      >{{ tg.name }}</button>
+      <button
+        v-if="tg.origin === 'local'"
+        class="tag-remove"
+        @click.stop="remove(tg.name)"
+        title="Remove tag"
+      >×</button>
+    </span>
     <input
       v-if="editing"
       ref="input"

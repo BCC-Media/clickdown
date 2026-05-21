@@ -15,15 +15,20 @@ import (
 	"github.com/bcc-media/clickdown/internal/db/gen"
 )
 
+type tagDTO struct {
+	Name   string `json:"name"`
+	Origin string `json:"origin"`
+}
+
 type taskDTO struct {
-	ID          int64    `json:"id"`
-	ClickupID   string   `json:"clickup_id"`
-	Title       string   `json:"title"`
-	Desc        string   `json:"desc"`
-	Status      string   `json:"status"`
-	Priority    *int64   `json:"priority"`
-	Tags        []string `json:"tags"`
-	UpdatedAt   int64    `json:"updated_at"`
+	ID        int64    `json:"id"`
+	ClickupID string   `json:"clickup_id"`
+	Title     string   `json:"title"`
+	Desc      string   `json:"desc"`
+	Status    string   `json:"status"`
+	Priority  *int64   `json:"priority"`
+	Tags      []tagDTO `json:"tags"`
+	UpdatedAt int64    `json:"updated_at"`
 }
 
 func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
@@ -38,15 +43,15 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	tagsByTask := map[int64][]string{}
+	tagsByTask := map[int64][]tagDTO{}
 	for _, tr := range tagRows {
-		tagsByTask[tr.TaskID] = append(tagsByTask[tr.TaskID], tr.TagName)
+		tagsByTask[tr.TaskID] = append(tagsByTask[tr.TaskID], tagDTO{Name: tr.TagName, Origin: tr.TagOrigin})
 	}
 	out := make([]taskDTO, 0, len(tasks))
 	for _, t := range tasks {
 		tags := tagsByTask[t.ID]
 		if tags == nil {
-			tags = []string{}
+			tags = []tagDTO{}
 		}
 		out = append(out, taskDTO{
 			ID:        t.ID,
@@ -387,9 +392,9 @@ func (s *Server) serveOneTask(ctx context.Context, w http.ResponseWriter, id int
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	tags := make([]string, 0, len(tagRows))
+	tags := make([]tagDTO, 0, len(tagRows))
 	for _, tr := range tagRows {
-		tags = append(tags, tr.Name)
+		tags = append(tags, tagDTO{Name: tr.Name, Origin: tr.Origin})
 	}
 	writeJSON(w, http.StatusOK, taskDTO{
 		ID:        t.ID,

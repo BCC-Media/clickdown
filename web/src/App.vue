@@ -78,9 +78,10 @@ const visible = computed(() => {
   let v = tasks.value.filter((x) => {
     if (sInc.length && !sInc.includes(x.status)) return false;
     if (sExc.includes(x.status)) return false;
-    if (tInc.length && !tInc.every((t) => x.tags.includes(t))) return false;
-    if (tExc.some((t) => x.tags.includes(t))) return false;
-    if (ql && !(x.title.toLowerCase().includes(ql) || (x.desc || "").toLowerCase().includes(ql) || x.tags.some((t) => t.toLowerCase().includes(ql)))) return false;
+    const tagNames = x.tags.map((t) => t.name);
+    if (tInc.length && !tInc.every((t) => tagNames.includes(t))) return false;
+    if (tExc.some((t) => tagNames.includes(t))) return false;
+    if (ql && !(x.title.toLowerCase().includes(ql) || (x.desc || "").toLowerCase().includes(ql) || tagNames.some((t) => t.toLowerCase().includes(ql)))) return false;
     return true;
   });
 
@@ -170,7 +171,10 @@ async function patchTask(id: number, p: Partial<{ title: string; desc: string; s
   if (p.title !== undefined) task.title = p.title;
   if (p.desc !== undefined) task.desc = p.desc;
   if (p.status !== undefined) task.status = p.status;
-  if (p.tags !== undefined) task.tags = p.tags;
+  if (p.tags !== undefined) {
+    const existingOrigin = new Map(task.tags.map((t) => [t.name, t.origin]));
+    task.tags = p.tags.map((name) => ({ name, origin: existingOrigin.get(name) ?? "local" }));
+  }
   try {
     let updated: Task;
     if (p.tags !== undefined) {
@@ -320,17 +324,18 @@ function syncDotClass(): string {
           @click="clearFilters"
           title="Clear all filters"
         >all<span class="chip-n">{{ counts.all }}</span></button>
-        <button
-          v-for="s in statuses"
-          :key="s.name"
-          :class="['chip', 'chip-dyn', { on: statusFilter[s.name] === 'include', exc: statusFilter[s.name] === 'exclude' }]"
-          :style="{ '--st-c': s.color }"
-          @click="cycleStatus(s.name)"
-          @contextmenu.prevent="setStatusExclude(s.name)"
-          :title="'click: include/exclude/clear · right-click: toggle exclude'"
-        >
-          <span class="chip-glyph">{{ statusFilter[s.name] === 'exclude' ? '⊘' : '●' }}</span>{{ s.name }}<span class="chip-n">{{ counts[s.name] || 0 }}</span>
-        </button>
+        <template v-for="s in statuses" :key="s.name">
+          <button
+            v-if="(counts[s.name] || 0) > 0 || statusFilter[s.name]"
+            :class="['chip', 'chip-dyn', { on: statusFilter[s.name] === 'include', exc: statusFilter[s.name] === 'exclude' }]"
+            :style="{ '--st-c': s.color }"
+            @click="cycleStatus(s.name)"
+            @contextmenu.prevent="setStatusExclude(s.name)"
+            :title="'click: include/exclude/clear · right-click: toggle exclude'"
+          >
+            <span class="chip-glyph">{{ statusFilter[s.name] === 'exclude' ? '⊘' : '●' }}</span>{{ s.name }}<span class="chip-n">{{ counts[s.name] || 0 }}</span>
+          </button>
+        </template>
         <template v-for="(state, tg) in tagFilter" :key="tg">
           <button
             :class="['chip', 'chip-tag', state === 'include' ? 'on' : 'exc']"

@@ -727,7 +727,16 @@ kbd {
         transparent
     );
 }
-.tag-add {
+.tag-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+}
+.tag-local {
+    font-style: italic;
+}
+.tag-add,
+.tag-remove {
     height: 18px;
     width: 18px;
     border-radius: 3px;
@@ -739,12 +748,24 @@ kbd {
     justify-content: center;
     opacity: 0;
 }
+.tag-remove {
+    width: 14px;
+    font-size: 12px;
+    color: oklch(70% 0.15 var(--tag-h));
+}
+.app.light .tag-remove {
+    color: oklch(45% 0.15 var(--tag-h));
+}
 .row:hover .tag-add,
 .row.focused .tag-add,
-.row.expanded .tag-add {
+.row.expanded .tag-add,
+.row:hover .tag-remove,
+.row.focused .tag-remove,
+.row.expanded .tag-remove {
     opacity: 1;
 }
-.tag-add:hover {
+.tag-add:hover,
+.tag-remove:hover {
     background: var(--surface-2);
     color: var(--text);
 }
