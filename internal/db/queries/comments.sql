@@ -7,8 +7,8 @@ ORDER BY COALESCE(clickup_date, local_created_at) ASC, id ASC;
 SELECT * FROM comments WHERE clickup_id = ?;
 
 -- name: InsertRemoteComment :one
-INSERT INTO comments (clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO comments (clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at, parent_clickup_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpdateRemoteComment :exec
@@ -17,8 +17,8 @@ SET author_id = ?, author_username = ?, text = ?, clickup_date = ?, deleted_at =
 WHERE clickup_id = ?;
 
 -- name: InsertLocalComment :one
-INSERT INTO comments (clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at)
-VALUES (NULL, ?, ?, ?, ?, NULL, ?)
+INSERT INTO comments (clickup_id, task_id, author_id, author_username, text, clickup_date, local_created_at, parent_clickup_id)
+VALUES (NULL, ?, ?, ?, ?, NULL, ?, ?)
 RETURNING *;
 
 -- name: SetCommentClickupID :exec
@@ -37,7 +37,7 @@ INSERT INTO comments_dirty (comment_id, queued_at) VALUES (?, ?)
 ON CONFLICT(comment_id) DO UPDATE SET queued_at = excluded.queued_at;
 
 -- name: ListCommentsDirty :many
-SELECT cd.comment_id, cd.queued_at, c.task_id, c.text
+SELECT cd.comment_id, cd.queued_at, c.task_id, c.text, c.parent_clickup_id
 FROM comments_dirty cd
 JOIN comments c ON c.id = cd.comment_id
 ORDER BY cd.queued_at ASC;

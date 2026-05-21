@@ -272,13 +272,14 @@ func (s *Server) patchSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 type commentDTO struct {
-	ID        int64   `json:"id"`
-	ClickupID *string `json:"clickup_id"`
-	TaskID    int64   `json:"task_id"`
-	Author    string  `json:"author"`
-	Text      string  `json:"text"`
-	CreatedAt int64   `json:"created_at"`
-	Pending   bool    `json:"pending"`
+	ID              int64   `json:"id"`
+	ClickupID       *string `json:"clickup_id"`
+	TaskID          int64   `json:"task_id"`
+	ParentClickupID *string `json:"parent_clickup_id"`
+	Author          string  `json:"author"`
+	Text            string  `json:"text"`
+	CreatedAt       int64   `json:"created_at"`
+	Pending         bool    `json:"pending"`
 }
 
 func commentToDTO(c gen.Comment) commentDTO {
@@ -287,13 +288,14 @@ func commentToDTO(c gen.Comment) commentDTO {
 		created = *c.ClickupDate
 	}
 	return commentDTO{
-		ID:        c.ID,
-		ClickupID: c.ClickupID,
-		TaskID:    c.TaskID,
-		Author:    c.AuthorUsername,
-		Text:      c.Text,
-		CreatedAt: created,
-		Pending:   c.ClickupID == nil,
+		ID:              c.ID,
+		ClickupID:       c.ClickupID,
+		TaskID:          c.TaskID,
+		ParentClickupID: c.ParentClickupID,
+		Author:          c.AuthorUsername,
+		Text:            c.Text,
+		CreatedAt:       created,
+		Pending:         c.ClickupID == nil,
 	}
 }
 
@@ -323,7 +325,8 @@ func (s *Server) listTaskComments(w http.ResponseWriter, r *http.Request) {
 }
 
 type postCommentBody struct {
-	Text string `json:"text"`
+	Text            string  `json:"text"`
+	ParentClickupID *string `json:"parent_clickup_id"`
 }
 
 func (s *Server) postTaskComment(w http.ResponseWriter, r *http.Request) {
@@ -351,11 +354,12 @@ func (s *Server) postTaskComment(w http.ResponseWriter, r *http.Request) {
 	authorName, _ := s.Store.Q.GetSetting(ctx, "clickup_username")
 	now := time.Now().UnixMilli()
 	c, err := s.Store.Q.InsertLocalComment(ctx, gen.InsertLocalCommentParams{
-		TaskID:         id,
-		AuthorID:       authorID,
-		AuthorUsername: authorName,
-		Text:           text,
-		LocalCreatedAt: now,
+		TaskID:          id,
+		AuthorID:        authorID,
+		AuthorUsername:  authorName,
+		Text:            text,
+		LocalCreatedAt:  now,
+		ParentClickupID: body.ParentClickupID,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)

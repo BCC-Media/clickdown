@@ -76,6 +76,7 @@ type Comment struct {
 	CommentText string      `json:"comment_text"`
 	User        CommentUser `json:"user"`
 	Date        string      `json:"date"`
+	ReplyCount  json.Number `json:"reply_count"`
 }
 
 type CommentUser struct {

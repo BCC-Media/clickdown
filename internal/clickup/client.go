@@ -180,3 +180,25 @@ func (c *Client) PostComment(ctx context.Context, taskID, text string) (PostComm
 	return decode[PostCommentResponse](resp)
 }
 
+// CommentReplies fetches the threaded replies for a comment.
+func (c *Client) CommentReplies(ctx context.Context, parentID string) ([]Comment, error) {
+	resp, err := c.do(ctx, http.MethodGet, "/comment/"+parentID+"/reply", nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	out, err := decode[commentsResponse](resp)
+	if err != nil {
+		return nil, err
+	}
+	return out.Comments, nil
+}
+
+// PostReply creates a threaded reply under a parent comment.
+func (c *Client) PostReply(ctx context.Context, parentID, text string) (PostCommentResponse, error) {
+	resp, err := c.do(ctx, http.MethodPost, "/comment/"+parentID+"/reply", nil, postCommentBody{CommentText: text})
+	if err != nil {
+		return PostCommentResponse{}, err
+	}
+	return decode[PostCommentResponse](resp)
+}
+

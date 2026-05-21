@@ -32,6 +32,7 @@ export interface Comment {
   id: number;
   clickup_id: string | null;
   task_id: number;
+  parent_clickup_id: string | null;
   author: string;
   text: string;
   created_at: number;
@@ -81,10 +82,10 @@ export const api = {
     }),
   listTaskComments: (id: number, opts?: { refresh?: boolean }) =>
     req<Comment[]>(`/api/tasks/${id}/comments${opts?.refresh ? "?refresh=1" : ""}`),
-  postTaskComment: (id: number, text: string) =>
+  postTaskComment: (id: number, text: string, parentClickupID?: string | null) =>
     req<Comment>(`/api/tasks/${id}/comments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, parent_clickup_id: parentClickupID ?? null }),
     }),
 };

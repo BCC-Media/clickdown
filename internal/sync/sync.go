@@ -476,6 +476,7 @@ func descriptionText(t clickup.Task) string {
 // PullCommentsForTask fetches the latest page of comments for the given local
 // task ID from ClickUp and reconciles them into the local DB. Locally-queued
 // comments (clickup_id IS NULL) are left untouched so they survive a refresh.
+// Threaded replies are pulled for any top-level comment whose reply_count > 0.
 func (w *Worker) PullCommentsForTask(ctx context.Context, taskID int64) error {
 	t, err := w.Store.Q.GetTask(ctx, taskID)
 	if err != nil {
@@ -484,6 +485,25 @@ func (w *Worker) PullCommentsForTask(ctx context.Context, taskID int64) error {
 	remote, err := w.Client.TaskComments(ctx, t.ClickupID)
 	if err != nil {
 		return err
+	}
+
+	type replyBatch struct {
+		parentID string
+		replies  []clickup.Comment
+	}
+	var replies []replyBatch
+	for _, rc := range remote {
+		n, _ := rc.ReplyCount.Int64()
+		if rc.ID == "" || n <= 0 {
+			continue
+		}
+		rs, err := w.Client.CommentReplies(ctx, rc.ID)
+		if err != nil {
+			// Best-effort: log and continue; the parent thread still renders.
+			log.Printf("clickdown: pull replies for comment %s: %v", rc.ID, err)
+			continue
+		}
+		replies = append(replies, replyBatch{parentID: rc.ID, replies: rs})
 	}
 
 	tx, err := w.Store.DB.BeginTx(ctx, nil)
@@ -495,41 +515,54 @@ func (w *Worker) PullCommentsForTask(ctx context.Context, taskID int64) error {
 	now := time.Now().UnixMilli()
 
 	keep := make([]*string, 0, len(remote))
-	for _, rc := range remote {
-		if rc.ID == "" {
-			continue
-		}
+	upsert := func(rc clickup.Comment, parent *string) error {
 		cid := rc.ID
 		keep = append(keep, &cid)
 		date := parseDateMillis(rc.Date)
 		authorID := rc.User.ID.String()
-		existing, gerr := q.GetCommentByClickupID(ctx, &cid)
+		_, gerr := q.GetCommentByClickupID(ctx, &cid)
 		if errors.Is(gerr, sql.ErrNoRows) {
-			if _, err := q.InsertRemoteComment(ctx, gen.InsertRemoteCommentParams{
-				ClickupID:      &cid,
-				TaskID:         t.ID,
-				AuthorID:       authorID,
-				AuthorUsername: rc.User.Username,
-				Text:           rc.CommentText,
-				ClickupDate:    date,
-				LocalCreatedAt: now,
-			}); err != nil {
-				return err
-			}
-			continue
+			_, err := q.InsertRemoteComment(ctx, gen.InsertRemoteCommentParams{
+				ClickupID:       &cid,
+				TaskID:          t.ID,
+				AuthorID:        authorID,
+				AuthorUsername:  rc.User.Username,
+				Text:            rc.CommentText,
+				ClickupDate:     date,
+				LocalCreatedAt:  now,
+				ParentClickupID: parent,
+			})
+			return err
 		}
 		if gerr != nil {
 			return gerr
 		}
-		_ = existing
-		if err := q.UpdateRemoteComment(ctx, gen.UpdateRemoteCommentParams{
+		return q.UpdateRemoteComment(ctx, gen.UpdateRemoteCommentParams{
 			AuthorID:       authorID,
 			AuthorUsername: rc.User.Username,
 			Text:           rc.CommentText,
 			ClickupDate:    date,
 			ClickupID:      &cid,
-		}); err != nil {
+		})
+	}
+
+	for _, rc := range remote {
+		if rc.ID == "" {
+			continue
+		}
+		if err := upsert(rc, nil); err != nil {
 			return err
+		}
+	}
+	for _, batch := range replies {
+		parent := batch.parentID
+		for _, rc := range batch.replies {
+			if rc.ID == "" {
+				continue
+			}
+			if err := upsert(rc, &parent); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -553,9 +586,17 @@ func (w *Worker) pushDirtyComments(ctx context.Context) error {
 		if err != nil {
 			continue
 		}
-		resp, err := w.Client.PostComment(ctx, t.ClickupID, d.Text)
-		if err != nil {
-			return fmt.Errorf("post comment task %s: %w", t.ClickupID, err)
+		var resp clickup.PostCommentResponse
+		if d.ParentClickupID != nil {
+			resp, err = w.Client.PostReply(ctx, *d.ParentClickupID, d.Text)
+			if err != nil {
+				return fmt.Errorf("post reply parent %s: %w", *d.ParentClickupID, err)
+			}
+		} else {
+			resp, err = w.Client.PostComment(ctx, t.ClickupID, d.Text)
+			if err != nil {
+				return fmt.Errorf("post comment task %s: %w", t.ClickupID, err)
+			}
 		}
 		cid := resp.ID.String()
 		date := parseDateMillis(resp.Date.String())

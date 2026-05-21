@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, computed } from "vue";
 import { api, type Comment } from "../api";
 
 const props = defineProps<{ taskId: number }>();
@@ -9,6 +9,27 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 const draft = ref("");
 const posting = ref(false);
+const replyDrafts = ref<Record<string, string>>({});
+const replyOpen = ref<Record<string, boolean>>({});
+const postingReply = ref<Record<string, boolean>>({});
+
+type Thread = { parent: Comment; replies: Comment[] };
+
+const threads = computed<Thread[]>(() => {
+  const byParent: Record<string, Comment[]> = {};
+  const tops: Comment[] = [];
+  for (const c of comments.value) {
+    if (c.parent_clickup_id) {
+      (byParent[c.parent_clickup_id] ??= []).push(c);
+    } else {
+      tops.push(c);
+    }
+  }
+  return tops.map((parent) => ({
+    parent,
+    replies: parent.clickup_id ? (byParent[parent.clickup_id] || []) : [],
+  }));
+});
 
 async function load() {
   const id = props.taskId;
@@ -50,11 +71,32 @@ async function post() {
   }
 }
 
-function onKey(e: KeyboardEvent) {
+async function postReply(parentClickupID: string) {
+  const text = (replyDrafts.value[parentClickupID] || "").trim();
+  if (!text || postingReply.value[parentClickupID]) return;
+  postingReply.value = { ...postingReply.value, [parentClickupID]: true };
+  error.value = null;
+  try {
+    const c = await api.postTaskComment(props.taskId, text, parentClickupID);
+    comments.value = [...comments.value, c];
+    replyDrafts.value = { ...replyDrafts.value, [parentClickupID]: "" };
+    replyOpen.value = { ...replyOpen.value, [parentClickupID]: false };
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    postingReply.value = { ...postingReply.value, [parentClickupID]: false };
+  }
+}
+
+function toggleReply(parentClickupID: string) {
+  replyOpen.value = { ...replyOpen.value, [parentClickupID]: !replyOpen.value[parentClickupID] };
+}
+
+function onKey(e: KeyboardEvent, send: () => void) {
   // Cmd/Ctrl+Enter or Shift+Enter posts; plain Enter inserts a newline.
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey || e.shiftKey)) {
     e.preventDefault();
-    post();
+    send();
   }
   e.stopPropagation();
 }
@@ -91,13 +133,45 @@ function fmtTime(ms: number): string {
     <div v-if="loading && comments.length === 0" class="comments-empty">loading…</div>
     <div v-else-if="!loading && comments.length === 0" class="comments-empty">no comments yet</div>
     <div v-else class="comment-list">
-      <div v-for="c in comments" :key="c.id" :class="['comment', { pending: c.pending }]">
-        <div class="comment-meta">
-          <span class="comment-author">{{ c.author || "you" }}</span>
-          <span class="comment-time">{{ fmtTime(c.created_at) }}</span>
-          <span v-if="c.pending" class="comment-pending">syncing…</span>
+      <div v-for="t in threads" :key="t.parent.id" class="thread">
+        <div :class="['comment', { pending: t.parent.pending }]">
+          <div class="comment-meta">
+            <span class="comment-author">{{ t.parent.author || "you" }}</span>
+            <span class="comment-time">{{ fmtTime(t.parent.created_at) }}</span>
+            <span v-if="t.parent.pending" class="comment-pending">syncing…</span>
+          </div>
+          <div class="comment-text">{{ t.parent.text }}</div>
+          <button
+            v-if="t.parent.clickup_id"
+            class="comment-reply-btn"
+            @click.stop="toggleReply(t.parent.clickup_id!)"
+          >{{ replyOpen[t.parent.clickup_id] ? "cancel" : "reply" }}</button>
         </div>
-        <div class="comment-text">{{ c.text }}</div>
+        <div v-if="t.replies.length || (t.parent.clickup_id && replyOpen[t.parent.clickup_id])" class="reply-list">
+          <div v-for="r in t.replies" :key="r.id" :class="['comment', 'reply', { pending: r.pending }]">
+            <div class="comment-meta">
+              <span class="comment-author">{{ r.author || "you" }}</span>
+              <span class="comment-time">{{ fmtTime(r.created_at) }}</span>
+              <span v-if="r.pending" class="comment-pending">syncing…</span>
+            </div>
+            <div class="comment-text">{{ r.text }}</div>
+          </div>
+          <div v-if="t.parent.clickup_id && replyOpen[t.parent.clickup_id]" class="comment-compose reply-compose">
+            <textarea
+              :value="replyDrafts[t.parent.clickup_id] || ''"
+              @input="replyDrafts = { ...replyDrafts, [t.parent.clickup_id!]: ($event.target as HTMLTextAreaElement).value }"
+              :disabled="postingReply[t.parent.clickup_id]"
+              placeholder="Reply…  (⇧⏎ or ⌘/Ctrl+⏎ to post)"
+              rows="2"
+              @keydown="onKey($event, () => postReply(t.parent.clickup_id!))"
+            />
+            <button
+              class="comment-post"
+              :disabled="postingReply[t.parent.clickup_id] || !(replyDrafts[t.parent.clickup_id] || '').trim()"
+              @click.stop="postReply(t.parent.clickup_id!)"
+            >{{ postingReply[t.parent.clickup_id] ? "posting…" : "post" }}</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="comment-compose">
@@ -106,7 +180,7 @@ function fmtTime(ms: number): string {
         :disabled="posting"
         placeholder="Add a comment…  (⇧⏎ or ⌘/Ctrl+⏎ to post)"
         rows="2"
-        @keydown="onKey"
+        @keydown="onKey($event, post)"
       />
       <button
         class="comment-post"
@@ -137,6 +211,19 @@ function fmtTime(ms: number): string {
   flex-direction: column;
   gap: 8px;
 }
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.reply-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: 18px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+}
 .comment {
   display: flex;
   flex-direction: column;
@@ -144,6 +231,9 @@ function fmtTime(ms: number): string {
   padding: 6px 8px;
   background: var(--surface-2);
   border-radius: 4px;
+}
+.comment.reply {
+  background: var(--surface);
 }
 .comment.pending {
   opacity: 0.7;
@@ -174,11 +264,30 @@ function fmtTime(ms: number): string {
   line-height: 1.5;
   white-space: pre-wrap;
 }
+.comment-reply-btn {
+  align-self: flex-start;
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  color: var(--text-3);
+  padding: 2px 6px;
+  margin-top: 2px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+}
+.comment-reply-btn:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
 .comment-compose {
   display: flex;
   gap: 6px;
   align-items: flex-start;
   margin-top: 4px;
+}
+.reply-compose {
+  margin-top: 2px;
 }
 .comment-compose textarea {
   flex: 1;
