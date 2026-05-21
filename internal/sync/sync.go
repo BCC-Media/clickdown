@@ -439,7 +439,9 @@ func (w *Worker) pushDirty(ctx context.Context) error {
 
 // encodeBlocks serializes the comment block array for storage. Returns nil
 // when the source is empty so the column stays NULL rather than holding "[]".
-func encodeBlocks(blocks []clickup.CommentBlock) *string {
+// Each block is a json.RawMessage so any fields ClickUp adds (formatting
+// attributes, new block types) survive the round-trip unmodified.
+func encodeBlocks(blocks []json.RawMessage) *string {
 	if len(blocks) == 0 {
 		return nil
 	}
