@@ -28,6 +28,7 @@ type taskDTO struct {
 	Status    string   `json:"status"`
 	Priority  *int64   `json:"priority"`
 	Tags      []tagDTO `json:"tags"`
+	ListID    *string  `json:"list_id"`
 	UpdatedAt int64    `json:"updated_at"`
 }
 
@@ -61,6 +62,7 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 			Status:    t.Status,
 			Priority:  t.Priority,
 			Tags:      tags,
+			ListID:    t.ListID,
 			UpdatedAt: t.LocalUpdatedAt,
 		})
 	}
@@ -412,6 +414,7 @@ func (s *Server) serveOneTask(ctx context.Context, w http.ResponseWriter, id int
 		Status:    t.Status,
 		Priority:  t.Priority,
 		Tags:      tags,
+		ListID:    t.ListID,
 		UpdatedAt: t.LocalUpdatedAt,
 	})
 }

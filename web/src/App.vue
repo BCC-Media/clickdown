@@ -53,6 +53,26 @@ const statusOrder = computed(() => {
   return m;
 });
 
+// Statuses are list-scoped on ClickUp, so the same name can appear across
+// multiple lists with different colors/types. For the global filter strip we
+// dedupe by name (first occurrence wins). Per-task UI uses statusesForTask.
+const chipStatuses = computed(() => {
+  const seen = new Set<string>();
+  const out: Status[] = [];
+  for (const s of statuses.value) {
+    if (seen.has(s.name)) continue;
+    seen.add(s.name);
+    out.push(s);
+  }
+  return out;
+});
+
+function statusesForTask(t: Task | undefined): Status[] {
+  if (!t) return [];
+  if (!t.list_id) return statuses.value;
+  return statuses.value.filter((s) => s.list_id === t.list_id);
+}
+
 const counts = computed(() => {
   const c: Record<string, number> = { all: tasks.value.length };
   statuses.value.forEach((s) => { c[s.name] = 0; });
@@ -281,7 +301,7 @@ function onKey(e: KeyboardEvent) {
   } else if (/^[1-9]$/.test(e.key) && cur) {
     e.preventDefault();
     const idx = parseInt(e.key, 10) - 1;
-    const target = statuses.value[idx];
+    const target = statusesForTask(cur)[idx];
     if (target) patchTask(cur.id, { status: target.name });
   }
 }
@@ -324,7 +344,7 @@ function syncDotClass(): string {
           @click="clearFilters"
           title="Clear all filters"
         >all<span class="chip-n">{{ counts.all }}</span></button>
-        <template v-for="s in statuses" :key="s.name">
+        <template v-for="s in chipStatuses" :key="s.name">
           <button
             v-if="(counts[s.name] || 0) > 0 || statusFilter[s.name]"
             :class="['chip', 'chip-dyn', { on: statusFilter[s.name] === 'include', exc: statusFilter[s.name] === 'exclude' }]"
@@ -374,7 +394,7 @@ function syncDotClass(): string {
         :expanded="expandedId === task.id"
         :selected="selected.has(task.id)"
         :tag-filter="tagFilter"
-        :statuses="statuses"
+        :statuses="statusesForTask(task)"
         @focus="focusIdx = i"
         @expand="expandedId = $event ? task.id : null"
         @patch="patchTask(task.id, $event)"

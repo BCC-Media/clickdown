@@ -245,31 +245,43 @@ func (w *Worker) reconcile(ctx context.Context, remote []clickup.Task) error {
 	q := w.Store.Q.WithTx(tx)
 	now := time.Now().UnixMilli()
 
-	// Upsert statuses. List-schema statuses first (authoritative), then
-	// task-embedded ones as a fallback for any task without a list_id.
+	// Statuses are list-scoped. Replace each list's status set with the
+	// authoritative response from the list endpoint, then fall back to the
+	// task-embedded status for any task whose list we couldn't fetch.
 	seen := map[string]bool{}
-	upsertStatus := func(s clickup.Status) error {
-		if s.Status == "" || seen[s.Status] {
+	upsertStatus := func(listID string, s clickup.Status) error {
+		if s.Status == "" {
 			return nil
 		}
-		seen[s.Status] = true
+		key := listID + "\x00" + s.Status
+		if seen[key] {
+			return nil
+		}
+		seen[key] = true
 		order, _ := s.Orderindex.Int64()
 		return q.UpsertStatus(ctx, gen.UpsertStatusParams{
+			ListID:     listID,
 			Name:       s.Status,
 			Color:      s.Color,
 			Type:       s.Type,
 			Orderindex: order,
 		})
 	}
-	for _, sts := range listStatuses {
+	for listID, sts := range listStatuses {
+		if err := q.ClearListStatuses(ctx, listID); err != nil {
+			return err
+		}
 		for _, s := range sts {
-			if err := upsertStatus(s); err != nil {
+			if err := upsertStatus(listID, s); err != nil {
 				return err
 			}
 		}
 	}
 	for _, t := range remote {
-		if err := upsertStatus(t.Status); err != nil {
+		if _, ok := listStatuses[t.List.ID]; ok {
+			continue
+		}
+		if err := upsertStatus(t.List.ID, t.Status); err != nil {
 			return err
 		}
 	}
@@ -298,6 +310,7 @@ func (w *Worker) upsertTask(ctx context.Context, q *gen.Queries, rt clickup.Task
 	updated := parseDateMillis(rt.DateUpdated)
 	priority := priorityID(rt.Priority)
 	teamID := nullableString(rt.TeamID)
+	listID := nullableString(rt.List.ID)
 
 	existing, err := q.GetTaskByClickupID(ctx, rt.ID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -308,6 +321,7 @@ func (w *Worker) upsertTask(ctx context.Context, q *gen.Queries, rt clickup.Task
 			Status:           rt.Status.Status,
 			Priority:         priority,
 			TeamID:           teamID,
+			ListID:           listID,
 			ClickupUpdatedAt: updated,
 			LocalUpdatedAt:   now,
 		})
@@ -345,6 +359,7 @@ func (w *Worker) upsertTask(ctx context.Context, q *gen.Queries, rt clickup.Task
 		Status:           status,
 		Priority:         priority,
 		TeamID:           teamID,
+		ListID:           listID,
 		ClickupUpdatedAt: updated,
 		ID:               existing.ID,
 	}); err != nil {
@@ -415,11 +430,33 @@ func (w *Worker) pushDirty(ctx context.Context) error {
 			req.Description = &t.Description
 		}
 		if d.Status != 0 {
-			req.Status = &t.Status
+			// Statuses are list-scoped on ClickUp; pushing a status that
+			// doesn't exist on the task's list returns 400. Drop the change
+			// rather than retry forever.
+			if t.ListID == nil {
+				log.Printf("clickdown: drop dirty status for task %s: unknown list_id", t.ClickupID)
+			} else {
+				ok, lerr := w.statusValidForList(ctx, *t.ListID, t.Status)
+				if lerr != nil {
+					return lerr
+				}
+				if !ok {
+					log.Printf("clickdown: drop dirty status %q for task %s: not in list %s", t.Status, t.ClickupID, *t.ListID)
+				} else {
+					req.Status = &t.Status
+				}
+			}
+		}
+		if req.Title == nil && req.Description == nil && req.Status == nil {
+			if err := w.Store.Q.ClearTaskDirty(ctx, t.ID); err != nil {
+				return err
+			}
+			continue
 		}
 		updated, err := w.Client.UpdateTask(ctx, t.ClickupID, req)
 		if err != nil {
-			return fmt.Errorf("push task %s: %w", t.ClickupID, err)
+			log.Printf("clickdown: push task %s: %v", t.ClickupID, err)
+			continue
 		}
 		now := time.Now().UnixMilli()
 		remoteUpdated := parseDateMillis(updated.DateUpdated)
@@ -451,6 +488,19 @@ func encodeBlocks(blocks []json.RawMessage) *string {
 	}
 	s := string(raw)
 	return &s
+}
+
+func (w *Worker) statusValidForList(ctx context.Context, listID, name string) (bool, error) {
+	rows, err := w.Store.Q.ListStatusesForList(ctx, listID)
+	if err != nil {
+		return false, err
+	}
+	for _, r := range rows {
+		if r.Name == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func parseDateMillis(s string) *int64 {

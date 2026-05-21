@@ -11,10 +11,12 @@ export interface Task {
   status: string;
   priority: number | null;
   tags: TaskTag[];
+  list_id: string | null;
   updated_at: number;
 }
 
 export interface Status {
+  list_id: string;
   name: string;
   color: string;
   type: string;
