@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import type { SyncStatus } from "../api";
 
 const props = defineProps<{
@@ -13,7 +13,13 @@ const emit = defineEmits<{
   (e: "sync-now"): void;
 }>();
 
-const open = ref(true);
+const OPEN_STORAGE_KEY = "clickdown:tweaks-open:v1";
+
+const open = ref(localStorage.getItem(OPEN_STORAGE_KEY) !== "0");
+watch(open, (v) => {
+  try { localStorage.setItem(OPEN_STORAGE_KEY, v ? "1" : "0"); } catch {}
+});
+
 const intervalMinutes = ref(Math.max(1, Math.round((props.intervalSeconds || 600) / 60)));
 
 const ACCENTS = ["#f5a524", "#ef4444", "#10b981", "#3b82f6", "#a855f7", "#ec4899"];
