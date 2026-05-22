@@ -12,6 +12,7 @@ export interface Task {
   priority: number | null;
   tags: TaskTag[];
   list_id: string | null;
+  due_date: number | null;
   updated_at: number;
 }
 

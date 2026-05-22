@@ -4,6 +4,7 @@ import StatusPill from "./StatusPill.vue";
 import TagList from "./TagList.vue";
 import EditableTitle from "./EditableTitle.vue";
 import PriorityBadge from "./PriorityBadge.vue";
+import DueDate from "./DueDate.vue";
 import CommentsSection from "./CommentsSection.vue";
 import type { Task, Status } from "../api";
 
@@ -113,6 +114,7 @@ function onDescKey(e: KeyboardEvent) {
         @tag-click="$emit('tag-click', $event)"
         @tag-exclude="$emit('tag-exclude', $event)"
       />
+      <DueDate :due="task.due_date" :closed="isClosed()" />
       <span class="row-desc-preview">{{ !expanded && task.desc ? task.desc : '' }}</span>
       <button class="row-open" @click.stop="$emit('open')" title="Open in ClickUp (o)">open <span class="row-open-arr">↗</span></button>
     </div>

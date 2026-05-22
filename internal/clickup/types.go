@@ -51,6 +51,7 @@ type Task struct {
 	Priority    *Priority `json:"priority"`
 	Tags        []Tag     `json:"tags"`
 	DateUpdated string    `json:"date_updated"`
+	DueDate     string    `json:"due_date"`
 	TeamID      string    `json:"team_id"`
 	List        ListRef   `json:"list"`
 }

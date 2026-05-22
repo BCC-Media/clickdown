@@ -13,8 +13,8 @@ SELECT clickup_id FROM tasks WHERE deleted_at IS NULL;
 -- name: InsertTask :one
 INSERT INTO tasks (
   clickup_id, title, description, status, priority, team_id, list_id,
-  clickup_updated_at, local_updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  due_date, clickup_updated_at, local_updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpdateTaskFromRemote :exec
@@ -25,6 +25,7 @@ SET title = ?,
     priority = ?,
     team_id = ?,
     list_id = ?,
+    due_date = ?,
     clickup_updated_at = ?,
     deleted_at = NULL
 WHERE id = ?;

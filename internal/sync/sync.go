@@ -311,6 +311,7 @@ func (w *Worker) upsertTask(ctx context.Context, q *gen.Queries, rt clickup.Task
 	priority := priorityID(rt.Priority)
 	teamID := nullableString(rt.TeamID)
 	listID := nullableString(rt.List.ID)
+	due := parseDateMillis(rt.DueDate)
 
 	existing, err := q.GetTaskByClickupID(ctx, rt.ID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -322,6 +323,7 @@ func (w *Worker) upsertTask(ctx context.Context, q *gen.Queries, rt clickup.Task
 			Priority:         priority,
 			TeamID:           teamID,
 			ListID:           listID,
+			DueDate:          due,
 			ClickupUpdatedAt: updated,
 			LocalUpdatedAt:   now,
 		})
@@ -360,6 +362,7 @@ func (w *Worker) upsertTask(ctx context.Context, q *gen.Queries, rt clickup.Task
 		Priority:         priority,
 		TeamID:           teamID,
 		ListID:           listID,
+		DueDate:          due,
 		ClickupUpdatedAt: updated,
 		ID:               existing.ID,
 	}); err != nil {

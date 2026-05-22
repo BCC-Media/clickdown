@@ -29,6 +29,7 @@ type taskDTO struct {
 	Priority  *int64   `json:"priority"`
 	Tags      []tagDTO `json:"tags"`
 	ListID    *string  `json:"list_id"`
+	DueDate   *int64   `json:"due_date"`
 	UpdatedAt int64    `json:"updated_at"`
 }
 
@@ -63,6 +64,7 @@ func (s *Server) listTasks(w http.ResponseWriter, r *http.Request) {
 			Priority:  t.Priority,
 			Tags:      tags,
 			ListID:    t.ListID,
+			DueDate:   t.DueDate,
 			UpdatedAt: t.LocalUpdatedAt,
 		})
 	}
@@ -253,10 +255,7 @@ func (s *Server) patchSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.SyncIntervalSeconds != nil && *body.SyncIntervalSeconds > 0 {
-		secs := *body.SyncIntervalSeconds
-		if secs < 30 {
-			secs = 30
-		}
+		secs := max(*body.SyncIntervalSeconds, 30)
 		s.Sync.SetInterval(time.Duration(secs) * time.Second)
 		if err := s.Store.Q.SetSetting(ctx, gen.SetSettingParams{Key: "sync_interval_seconds", Value: strconv.FormatInt(secs, 10)}); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -415,6 +414,7 @@ func (s *Server) serveOneTask(ctx context.Context, w http.ResponseWriter, id int
 		Priority:  t.Priority,
 		Tags:      tags,
 		ListID:    t.ListID,
+		DueDate:   t.DueDate,
 		UpdatedAt: t.LocalUpdatedAt,
 	})
 }
