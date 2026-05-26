@@ -131,19 +131,23 @@ type UpdateTaskRequest struct {
 	Status      *string
 }
 
-// ListStatuses fetches the status schema for the given list from ClickUp.
-// Returns every status defined on the list, including terminal ones that no
-// task may currently be assigned to.
-func (c *Client) ListStatuses(ctx context.Context, listID string) ([]Status, error) {
+// FetchList fetches a list's metadata (name, team_id) and its full status
+// schema in a single request. Returns every status defined on the list,
+// including terminal ones that no task may currently be assigned to.
+func (c *Client) FetchList(ctx context.Context, listID string) (List, []Status, error) {
 	resp, err := c.do(ctx, http.MethodGet, "/list/"+listID, nil, nil)
 	if err != nil {
-		return nil, err
+		return List{}, nil, err
 	}
 	out, err := decode[listResponse](resp)
 	if err != nil {
-		return nil, err
+		return List{}, nil, err
 	}
-	return out.Statuses, nil
+	l := List{ID: out.ID, Name: out.Name, TeamID: out.TeamID}
+	if l.ID == "" {
+		l.ID = listID
+	}
+	return l, out.Statuses, nil
 }
 
 func (c *Client) UpdateTask(ctx context.Context, taskID string, u UpdateTaskRequest) (Task, error) {
@@ -154,6 +158,30 @@ func (c *Client) UpdateTask(ctx context.Context, taskID string, u UpdateTaskRequ
 	}
 	return decode[Task](resp)
 }
+
+type CreateTaskRequest struct {
+	Name        string
+	Description string
+	Status      string
+	Assignees   []int64
+}
+
+// CreateTask POSTs a new task to the given list. ClickUp's default task type
+// is "Task", which is what we want, so no custom_item_id is sent.
+func (c *Client) CreateTask(ctx context.Context, listID string, r CreateTaskRequest) (Task, error) {
+	body := taskCreateBody{
+		Name:        r.Name,
+		Description: r.Description,
+		Status:      r.Status,
+		Assignees:   r.Assignees,
+	}
+	resp, err := c.do(ctx, http.MethodPost, "/list/"+listID+"/task", nil, body)
+	if err != nil {
+		return Task{}, err
+	}
+	return decode[Task](resp)
+}
+
 
 // TaskComments fetches the most recent page of comments for a task (ClickUp
 // returns up to 25 newest-first; pagination via the `start` cursor is not

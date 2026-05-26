@@ -22,7 +22,7 @@ type tagDTO struct {
 
 type taskDTO struct {
 	ID        int64    `json:"id"`
-	ClickupID string   `json:"clickup_id"`
+	ClickupID *string  `json:"clickup_id"`
 	Title     string   `json:"title"`
 	Desc      string   `json:"desc"`
 	Status    string   `json:"status"`
@@ -189,6 +189,95 @@ func (s *Server) putTaskTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.serveOneTask(ctx, w, id)
+}
+
+type createTaskBody struct {
+	ListID      string `json:"list_id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+}
+
+// createTask inserts a locally-created task into the DB with a NULL
+// clickup_id and queues a dirty marker so the sync worker POSTs it to
+// ClickUp on its next pass. Mirrors patchTask's local-first pattern.
+func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	var body createTaskBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	body.ListID = strings.TrimSpace(body.ListID)
+	body.Title = strings.TrimSpace(body.Title)
+	if body.ListID == "" {
+		writeError(w, http.StatusBadRequest, errors.New("list_id is required"))
+		return
+	}
+	if body.Title == "" {
+		writeError(w, http.StatusBadRequest, errors.New("title is required"))
+		return
+	}
+	// Default status: first by orderindex for the chosen list, preferring
+	// an open type so we land on Triage / To do rather than a terminal state.
+	status := strings.TrimSpace(body.Status)
+	if status == "" {
+		rows, err := s.Store.Q.ListStatusesForList(ctx, body.ListID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		for _, row := range rows {
+			if row.Type == "open" {
+				status = row.Name
+				break
+			}
+		}
+		if status == "" && len(rows) > 0 {
+			status = rows[0].Name
+		}
+		if status == "" {
+			writeError(w, http.StatusBadRequest, errors.New("status is required and no statuses are known for this list"))
+			return
+		}
+	}
+	listID := body.ListID
+	now := time.Now().UnixMilli()
+	t, err := s.Store.Q.InsertLocalTask(ctx, gen.InsertLocalTaskParams{
+		Title:          body.Title,
+		Description:    body.Description,
+		Status:         status,
+		ListID:         &listID,
+		LocalUpdatedAt: now,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	// Mark all fields dirty so pushDirty has a row to find. Title/desc/status
+	// flags are unused by the create branch (the POST carries them from the
+	// task row directly) but keep the row present in task_dirty until sync.
+	if err := s.Store.Q.UpsertTaskDirty(ctx, gen.UpsertTaskDirtyParams{
+		TaskID:      t.ID,
+		Title:       1,
+		Description: 1,
+		Status:      1,
+		QueuedAt:    now,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	s.Sync.Trigger()
+	s.serveOneTask(ctx, w, t.ID)
+}
+
+func (s *Server) listLists(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.Store.Q.ListLists(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
 }
 
 func (s *Server) listStatuses(w http.ResponseWriter, r *http.Request) {

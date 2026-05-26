@@ -216,12 +216,15 @@ func (w *Worker) ensureTeamIDs(ctx context.Context) ([]string, error) {
 }
 
 func (w *Worker) reconcile(ctx context.Context, remote []clickup.Task) error {
-	// Fetch each unique list's full status schema before opening the tx so
-	// HTTP latency doesn't hold a SQLite write lock. The list endpoint is the
-	// authoritative source for statuses — task-embedded statuses only surface
-	// states that some currently-open task is assigned to, so terminal states
-	// like "Closed" would otherwise never reach the local DB.
+	// Fetch each unique list's metadata + full status schema before opening
+	// the tx so HTTP latency doesn't hold a SQLite write lock. The list
+	// endpoint is the authoritative source for statuses — task-embedded
+	// statuses only surface states that some currently-open task is assigned
+	// to, so terminal states like "Closed" would otherwise never reach the
+	// local DB. The list's name and team_id are captured at the same time so
+	// the create-task modal can show friendly names without an extra request.
 	listStatuses := make(map[string][]clickup.Status)
+	listMeta := make(map[string]clickup.List)
 	for _, t := range remote {
 		if t.List.ID == "" {
 			continue
@@ -229,12 +232,13 @@ func (w *Worker) reconcile(ctx context.Context, remote []clickup.Task) error {
 		if _, ok := listStatuses[t.List.ID]; ok {
 			continue
 		}
-		sts, err := w.Client.ListStatuses(ctx, t.List.ID)
+		info, sts, err := w.Client.FetchList(ctx, t.List.ID)
 		if err != nil {
-			log.Printf("clickdown: fetch list %s statuses: %v", t.List.ID, err)
+			log.Printf("clickdown: fetch list %s: %v", t.List.ID, err)
 			continue
 		}
 		listStatuses[t.List.ID] = sts
+		listMeta[t.List.ID] = info
 	}
 
 	tx, err := w.Store.DB.BeginTx(ctx, nil)
@@ -277,6 +281,21 @@ func (w *Worker) reconcile(ctx context.Context, remote []clickup.Task) error {
 			}
 		}
 	}
+	// Persist list names so the create-task modal can show friendly names.
+	for _, info := range listMeta {
+		if info.ID == "" || info.Name == "" {
+			continue
+		}
+		teamID := nullableString(info.TeamID)
+		if err := q.UpsertList(ctx, gen.UpsertListParams{
+			ID:        info.ID,
+			Name:      info.Name,
+			TeamID:    teamID,
+			UpdatedAt: now,
+		}); err != nil {
+			return err
+		}
+	}
 	for _, t := range remote {
 		if _, ok := listStatuses[t.List.ID]; ok {
 			continue
@@ -286,9 +305,10 @@ func (w *Worker) reconcile(ctx context.Context, remote []clickup.Task) error {
 		}
 	}
 
-	keepIDs := make([]string, 0, len(remote))
+	keepIDs := make([]*string, 0, len(remote))
 	for _, rt := range remote {
-		keepIDs = append(keepIDs, rt.ID)
+		id := rt.ID
+		keepIDs = append(keepIDs, &id)
 		if err := w.upsertTask(ctx, q, rt, now); err != nil {
 			return fmt.Errorf("upsert task %s: %w", rt.ID, err)
 		}
@@ -313,10 +333,11 @@ func (w *Worker) upsertTask(ctx context.Context, q *gen.Queries, rt clickup.Task
 	listID := nullableString(rt.List.ID)
 	due := parseDateMillis(rt.DueDate)
 
-	existing, err := q.GetTaskByClickupID(ctx, rt.ID)
+	cid := rt.ID
+	existing, err := q.GetTaskByClickupID(ctx, &cid)
 	if errors.Is(err, sql.ErrNoRows) {
 		t, err := q.InsertTask(ctx, gen.InsertTaskParams{
-			ClickupID:        rt.ID,
+			ClickupID:        &cid,
 			Title:            rt.Name,
 			Description:      descriptionText(rt),
 			Status:           rt.Status.Status,
@@ -425,6 +446,16 @@ func (w *Worker) pushDirty(ctx context.Context) error {
 		if err != nil {
 			continue
 		}
+		// Local-first creates surface here as dirty rows whose task has no
+		// clickup_id yet. POST to ClickUp and backfill the id; subsequent
+		// dirty rows for the same task will fall through to the update path.
+		if t.ClickupID == nil {
+			if err := w.pushLocalCreate(ctx, t); err != nil {
+				log.Printf("clickdown: create task %d: %v", t.ID, err)
+			}
+			continue
+		}
+		clickupID := *t.ClickupID
 		req := clickup.UpdateTaskRequest{}
 		if d.Title != 0 {
 			req.Title = &t.Title
@@ -437,14 +468,14 @@ func (w *Worker) pushDirty(ctx context.Context) error {
 			// doesn't exist on the task's list returns 400. Drop the change
 			// rather than retry forever.
 			if t.ListID == nil {
-				log.Printf("clickdown: drop dirty status for task %s: unknown list_id", t.ClickupID)
+				log.Printf("clickdown: drop dirty status for task %s: unknown list_id", clickupID)
 			} else {
 				ok, lerr := w.statusValidForList(ctx, *t.ListID, t.Status)
 				if lerr != nil {
 					return lerr
 				}
 				if !ok {
-					log.Printf("clickdown: drop dirty status %q for task %s: not in list %s", t.Status, t.ClickupID, *t.ListID)
+					log.Printf("clickdown: drop dirty status %q for task %s: not in list %s", t.Status, clickupID, *t.ListID)
 				} else {
 					req.Status = &t.Status
 				}
@@ -456,9 +487,9 @@ func (w *Worker) pushDirty(ctx context.Context) error {
 			}
 			continue
 		}
-		updated, err := w.Client.UpdateTask(ctx, t.ClickupID, req)
+		updated, err := w.Client.UpdateTask(ctx, clickupID, req)
 		if err != nil {
-			log.Printf("clickdown: push task %s: %v", t.ClickupID, err)
+			log.Printf("clickdown: push task %s: %v", clickupID, err)
 			continue
 		}
 		now := time.Now().UnixMilli()
@@ -475,6 +506,50 @@ func (w *Worker) pushDirty(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// pushLocalCreate POSTs a locally-created task to ClickUp and backfills the
+// clickup_id / team_id / clickup_updated_at columns. The create payload
+// carries the task's current title/description/status so any inline edits
+// made before the first sync still ship with this single request.
+func (w *Worker) pushLocalCreate(ctx context.Context, t gen.Task) error {
+	if t.ListID == nil || *t.ListID == "" {
+		return errors.New("missing list_id")
+	}
+	userIDStr, err := w.Store.Q.GetSetting(ctx, settingUserID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	var assignees []int64
+	if userIDStr != "" {
+		if uid, perr := strconv.ParseInt(userIDStr, 10, 64); perr == nil {
+			assignees = []int64{uid}
+		}
+	}
+	req := clickup.CreateTaskRequest{
+		Name:        t.Title,
+		Description: t.Description,
+		Status:      t.Status,
+		Assignees:   assignees,
+	}
+	created, err := w.Client.CreateTask(ctx, *t.ListID, req)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UnixMilli()
+	remoteUpdated := parseDateMillis(created.DateUpdated)
+	cid := created.ID
+	teamID := nullableString(created.TeamID)
+	if err := w.Store.Q.MarkTaskCreated(ctx, gen.MarkTaskCreatedParams{
+		ClickupID:        &cid,
+		TeamID:           teamID,
+		ClickupUpdatedAt: remoteUpdated,
+		LastPushedAt:     &now,
+		ID:               t.ID,
+	}); err != nil {
+		return err
+	}
+	return w.Store.Q.ClearTaskDirty(ctx, t.ID)
 }
 
 // encodeBlocks serializes the comment block array for storage. Returns nil
@@ -551,7 +626,12 @@ func (w *Worker) PullCommentsForTask(ctx context.Context, taskID int64) error {
 	if err != nil {
 		return err
 	}
-	remote, err := w.Client.TaskComments(ctx, t.ClickupID)
+	if t.ClickupID == nil {
+		// Locally-created task that hasn't been pushed yet has no remote
+		// comments to pull. Skip silently.
+		return nil
+	}
+	remote, err := w.Client.TaskComments(ctx, *t.ClickupID)
 	if err != nil {
 		return err
 	}
@@ -665,9 +745,15 @@ func (w *Worker) pushDirtyComments(ctx context.Context) error {
 				return fmt.Errorf("post reply parent %s: %w", *d.ParentClickupID, err)
 			}
 		} else {
-			resp, err = w.Client.PostComment(ctx, t.ClickupID, d.Text)
+			if t.ClickupID == nil {
+				// Comment was queued before the parent task was pushed to
+				// ClickUp. Skip this round — the next sync will retry once
+				// the task has a clickup_id.
+				continue
+			}
+			resp, err = w.Client.PostComment(ctx, *t.ClickupID, d.Text)
 			if err != nil {
-				return fmt.Errorf("post comment task %s: %w", t.ClickupID, err)
+				return fmt.Errorf("post comment task %s: %w", *t.ClickupID, err)
 			}
 		}
 		cid := resp.ID.String()

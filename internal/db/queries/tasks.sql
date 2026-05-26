@@ -8,7 +8,7 @@ SELECT * FROM tasks WHERE clickup_id = ?;
 SELECT * FROM tasks WHERE deleted_at IS NULL ORDER BY id;
 
 -- name: ListClickupIDs :many
-SELECT clickup_id FROM tasks WHERE deleted_at IS NULL;
+SELECT clickup_id FROM tasks WHERE deleted_at IS NULL AND clickup_id IS NOT NULL;
 
 -- name: InsertTask :one
 INSERT INTO tasks (
@@ -16,6 +16,20 @@ INSERT INTO tasks (
   due_date, clickup_updated_at, local_updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
+
+-- name: InsertLocalTask :one
+INSERT INTO tasks (
+  clickup_id, title, description, status, list_id, local_updated_at
+) VALUES (NULL, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: MarkTaskCreated :exec
+UPDATE tasks
+SET clickup_id = ?,
+    team_id = ?,
+    clickup_updated_at = ?,
+    last_pushed_at = ?
+WHERE id = ?;
 
 -- name: UpdateTaskFromRemote :exec
 UPDATE tasks
@@ -48,4 +62,5 @@ UPDATE tasks SET deleted_at = ? WHERE id = ?;
 -- name: SoftDeleteMissingTasks :exec
 UPDATE tasks SET deleted_at = ?
 WHERE deleted_at IS NULL
+  AND clickup_id IS NOT NULL
   AND clickup_id NOT IN (sqlc.slice('keep'));

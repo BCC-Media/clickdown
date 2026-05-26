@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from "vue";
 import Row from "./components/Row.vue";
 import TweaksPanel from "./components/TweaksPanel.vue";
+import CreateTaskModal from "./components/CreateTaskModal.vue";
 import { api, type Task, type Status, type SyncStatus } from "./api";
 
 const tasks = ref<Task[]>([]);
@@ -44,6 +45,7 @@ watch([statusFilter, tagFilter], ([s, t]) => {
 const focusIdx = ref(0);
 const expandedId = ref<number | null>(null);
 const selected = ref<Set<number>>(new Set());
+const createOpen = ref(false);
 
 const searchEl = ref<HTMLInputElement | null>(null);
 
@@ -260,6 +262,15 @@ function openInClickup(t: Task) {
   window.open(`https://app.clickup.com/t/${t.clickup_id}`, "_blank");
 }
 
+function onTaskCreated(task: Task) {
+  tasks.value = [task, ...tasks.value];
+  // Focus the new row if it's visible under the current filters.
+  nextTick(() => {
+    const idx = visible.value.findIndex((t) => t.id === task.id);
+    if (idx >= 0) focusIdx.value = idx;
+  });
+}
+
 function onKey(e: KeyboardEvent) {
   const t = e.target as HTMLElement;
   const tag = (t.tagName || "").toLowerCase();
@@ -270,6 +281,12 @@ function onKey(e: KeyboardEvent) {
     return;
   }
   if (editing) return;
+
+  if (e.key === "n" && !createOpen.value) {
+    e.preventDefault();
+    createOpen.value = true;
+    return;
+  }
 
   const list = visible.value;
   const cur = list[focusIdx.value];
@@ -412,6 +429,7 @@ function syncDotClass(): string {
         <kbd>e</kbd> edit ·
         <kbd>1</kbd>–<kbd>9</kbd> status ·
         <kbd>o</kbd> open ·
+        <kbd>n</kbd> new ·
         <kbd>/</kbd> search ·
         <kbd>x</kbd> select
       </div>
@@ -436,5 +454,29 @@ function syncDotClass(): string {
       @set="setTweaks"
       @sync-now="syncNow"
     />
+
+    <button class="create-fab" @click="createOpen = true" title="New task (n)">+</button>
+
+    <CreateTaskModal
+      v-model="createOpen"
+      :statuses="statuses"
+      @created="onTaskCreated"
+    />
   </div>
 </template>
+
+<style scoped>
+.create-fab {
+  position: fixed; right: 16px; bottom: 80px;
+  width: 36px; height: 36px;
+  border-radius: 18px;
+  background: var(--accent);
+  color: #0e0e0c;
+  border: 1px solid var(--border-strong);
+  font-size: 20px;
+  line-height: 1;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+}
+.create-fab:hover { filter: brightness(1.05); }
+</style>

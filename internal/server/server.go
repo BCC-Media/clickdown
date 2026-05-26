@@ -32,11 +32,13 @@ func (s *Server) Handler() http.Handler {
 
 	// API
 	mux.HandleFunc("GET /api/tasks", s.listTasks)
+	mux.HandleFunc("POST /api/tasks", s.createTask)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.patchTask)
 	mux.HandleFunc("PUT /api/tasks/{id}/tags", s.putTaskTags)
 	mux.HandleFunc("GET /api/tasks/{id}/comments", s.listTaskComments)
 	mux.HandleFunc("POST /api/tasks/{id}/comments", s.postTaskComment)
 	mux.HandleFunc("GET /api/statuses", s.listStatuses)
+	mux.HandleFunc("GET /api/lists", s.listLists)
 	mux.HandleFunc("GET /api/tags", s.listTags)
 	mux.HandleFunc("POST /api/sync", s.triggerSync)
 	mux.HandleFunc("GET /api/sync/status", s.syncStatus)

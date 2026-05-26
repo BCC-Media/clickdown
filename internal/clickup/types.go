@@ -63,13 +63,31 @@ type filteredTasksResponse struct {
 
 type listResponse struct {
 	ID       string   `json:"id"`
+	Name     string   `json:"name"`
 	Statuses []Status `json:"statuses"`
+	TeamID   string   `json:"team_id"`
+}
+
+// List is a minimal representation of a ClickUp list, enough to back the
+// create-task modal's list dropdown.
+type List struct {
+	ID     string
+	Name   string
+	TeamID string
 }
 
 type taskUpdateBody struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
 	Status      *string `json:"status,omitempty"`
+}
+
+type taskCreateBody struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Status      string   `json:"status,omitempty"`
+	Assignees   []int64  `json:"assignees,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
 }
 
 type Comment struct {

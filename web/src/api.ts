@@ -5,7 +5,7 @@ export interface TaskTag {
 
 export interface Task {
   id: number;
-  clickup_id: string;
+  clickup_id: string | null;
   title: string;
   desc: string;
   status: string;
@@ -13,6 +13,13 @@ export interface Task {
   tags: TaskTag[];
   list_id: string | null;
   due_date: number | null;
+  updated_at: number;
+}
+
+export interface ListEntity {
+  id: string;
+  name: string;
+  team_id: string | null;
   updated_at: number;
 }
 
@@ -81,6 +88,13 @@ async function req<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
 
 export const api = {
   listTasks: () => req<Task[]>("/api/tasks"),
+  createTask: (body: { list_id: string; title: string; description?: string; status?: string }) =>
+    req<Task>("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  listLists: () => req<ListEntity[]>("/api/lists"),
   patchTask: (id: number, body: Partial<Pick<Task, "title" | "desc" | "status">> & { description?: string }) =>
     req<Task>(`/api/tasks/${id}`, {
       method: "PATCH",
