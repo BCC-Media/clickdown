@@ -611,6 +611,12 @@ func nullableString(s string) *string {
 }
 
 func descriptionText(t clickup.Task) string {
+	// Prefer the Markdown description: it's the only form that keeps embedded
+	// images (![](url)). text_content/description strip them, so a later edit
+	// pushed back to ClickUp would delete the images.
+	if t.MarkdownDescription != "" {
+		return t.MarkdownDescription
+	}
 	if t.TextContent != "" {
 		return t.TextContent
 	}

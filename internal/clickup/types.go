@@ -47,6 +47,11 @@ type Task struct {
 	Name        string    `json:"name"`
 	TextContent string    `json:"text_content"`
 	Description string    `json:"description"`
+	// MarkdownDescription is the description rendered as Markdown, including
+	// embedded image refs (![](url)). text_content/description strip images, so
+	// this is the only field that round-trips them. Populated only when the
+	// request sets include_markdown_description=true.
+	MarkdownDescription string `json:"markdown_description"`
 	Status      Status    `json:"status"`
 	Priority    *Priority `json:"priority"`
 	Tags        []Tag     `json:"tags"`
@@ -77,9 +82,12 @@ type List struct {
 }
 
 type taskUpdateBody struct {
-	Name        *string `json:"name,omitempty"`
-	Description *string `json:"description,omitempty"`
-	Status      *string `json:"status,omitempty"`
+	Name *string `json:"name,omitempty"`
+	// MarkdownContent sets the description from Markdown so embedded images
+	// survive the write. Writing the plain `description` field instead would
+	// strip them.
+	MarkdownContent *string `json:"markdown_content,omitempty"`
+	Status          *string `json:"status,omitempty"`
 }
 
 type taskCreateBody struct {

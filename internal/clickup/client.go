@@ -104,6 +104,9 @@ func (c *Client) TasksAssignedToMe(ctx context.Context, teamID, userID string) (
 		q.Set("page", strconv.Itoa(page))
 		q.Set("include_closed", "false")
 		q.Set("subtasks", "true")
+		// Ask for markdown_description so descriptions with embedded images
+		// round-trip without stripping them.
+		q.Set("include_markdown_description", "true")
 		q.Add("assignees[]", userID)
 		path := "/team/" + teamID + "/task"
 		resp, err := c.do(ctx, http.MethodGet, path, q, nil)
@@ -151,7 +154,9 @@ func (c *Client) FetchList(ctx context.Context, listID string) (List, []Status, 
 }
 
 func (c *Client) UpdateTask(ctx context.Context, taskID string, u UpdateTaskRequest) (Task, error) {
-	body := taskUpdateBody{Name: u.Title, Description: u.Description, Status: u.Status}
+	// Description holds Markdown (with image refs); send it as markdown_content
+	// so ClickUp keeps embedded images instead of stripping them.
+	body := taskUpdateBody{Name: u.Title, MarkdownContent: u.Description, Status: u.Status}
 	resp, err := c.do(ctx, http.MethodPut, "/task/"+taskID, nil, body)
 	if err != nil {
 		return Task{}, err

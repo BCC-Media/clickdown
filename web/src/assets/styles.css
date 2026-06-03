@@ -876,6 +876,58 @@ kbd {
     content: attr(data-placeholder);
     color: var(--text-3);
 }
+.expand-body-empty {
+    color: var(--text-3);
+    cursor: text;
+}
+/* Rendered Markdown read-view: markdown-it emits block elements, so the
+   pre-wrap whitespace handling from .expand-body must be turned off. */
+.markdown-body {
+    white-space: normal;
+    cursor: text;
+}
+.markdown-body > :first-child {
+    margin-top: 0;
+}
+.markdown-body > :last-child {
+    margin-bottom: 0;
+}
+.markdown-body p {
+    margin: 0 0 8px;
+}
+.markdown-body a {
+    color: var(--accent);
+}
+.markdown-body img {
+    max-width: 100%;
+    max-height: 320px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    display: block;
+    margin: 4px 0;
+}
+.markdown-body ul,
+.markdown-body ol {
+    margin: 0 0 8px;
+    padding-left: 18px;
+}
+.markdown-body code {
+    font-family: "Geist Mono", monospace;
+    font-size: 11.5px;
+    background: var(--surface-2);
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+.markdown-body pre {
+    background: var(--surface-2);
+    padding: 8px 10px;
+    border-radius: 4px;
+    overflow-x: auto;
+}
+.markdown-body pre code {
+    background: none;
+    padding: 0;
+}
 .expand-meta {
     display: flex;
     gap: 14px;
