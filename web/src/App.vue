@@ -259,7 +259,7 @@ function bulkDone() {
 
 function openInClickup(t: Task) {
   if (!t.clickup_id) return;
-  window.open(`https://app.clickup.com/t/${t.clickup_id}`, "_blank");
+  window.open(`clickup://app.clickup.com/t/${t.clickup_id}`, "_blank");
 }
 
 function onTaskCreated(task: Task) {
